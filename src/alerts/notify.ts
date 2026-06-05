@@ -1,5 +1,5 @@
 import { detectBelowMarket, ALERT_TYPE_BELOW_MARKET } from './rules.js';
-import { formatAlertText, formatAlertHtml } from './format.js';
+import { formatAlertsText, formatAlertsHtml } from './format.js';
 import type { Repository } from '../db/index.js';
 import type {
   AppConfig,
@@ -25,8 +25,10 @@ export interface FiredAlert {
   evalResult: BelowMarketResult;
 }
 
-// Evaluate freshly-seen listings against their district baseline and send
-// email alerts for below-market ones, deduping via the repo.
+// Evaluate freshly-seen listings against their district baseline, then send a
+// single email summarizing every below-market hit from this polling round
+// (instead of one email per listing). Alerts are deduped via the repo and only
+// recorded as sent once the email is delivered.
 export async function notifyBelowMarket({
   repo,
   config,
@@ -34,7 +36,7 @@ export async function notifyBelowMarket({
   email,
   logger = console,
 }: NotifyDeps): Promise<FiredAlert[]> {
-  const fired: FiredAlert[] = [];
+  const candidates: FiredAlert[] = [];
   for (const listing of listings) {
     if (listing.district === null || listing.district === undefined) continue;
     if (repo.hasAlertBeenSent(listing.id, ALERT_TYPE_BELOW_MARKET)) continue;
@@ -43,24 +45,30 @@ export async function notifyBelowMarket({
     const evalResult = detectBelowMarket(listing, baseline, config.alertThresholdPct);
     if (!evalResult.triggered) continue;
 
-    const subject = `Cheap ${listing.rooms ?? ''}-room flat in District ${listing.district}: EUR ${listing.price}`;
-    const text = formatAlertText(listing, evalResult);
-    const html = formatAlertHtml(listing, evalResult);
-
-    let delivered = false;
-    if (email && config.alertEmailTo.length > 0) {
-      try {
-        await email.send({ to: config.alertEmailTo, subject, text, html });
-        delivered = true;
-      } catch (err) {
-        logger.warn?.(`email alert failed for ${listing.id}: ${(err as Error).message}`);
-      }
-    }
-
-    if (delivered) {
-      repo.recordAlertSent(listing.id, ALERT_TYPE_BELOW_MARKET);
-      fired.push({ listing, evalResult });
-    }
+    candidates.push({ listing, evalResult });
   }
-  return fired;
+
+  if (candidates.length === 0) return [];
+  if (!email || config.alertEmailTo.length === 0) return [];
+
+  const subject =
+    candidates.length === 1
+      ? `Cheap ${candidates[0]!.listing.rooms ?? ''}-room flat in District ${candidates[0]!.listing.district}: EUR ${candidates[0]!.listing.price}`
+      : `${candidates.length} below-market apartments found`;
+  const text = formatAlertsText(candidates);
+  const html = formatAlertsHtml(candidates);
+
+  try {
+    await email.send({ to: config.alertEmailTo, subject, text, html });
+  } catch (err) {
+    logger.warn?.(
+      `email alert failed for ${candidates.length} listing(s): ${(err as Error).message}`,
+    );
+    return [];
+  }
+
+  for (const { listing } of candidates) {
+    repo.recordAlertSent(listing.id, ALERT_TYPE_BELOW_MARKET);
+  }
+  return candidates;
 }

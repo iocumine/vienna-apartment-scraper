@@ -140,6 +140,21 @@ describe('notifyBelowMarket', () => {
     expect(emails).toHaveLength(1);
   });
 
+  it('batches all below-market hits from one round into a single email', async () => {
+    const repo = fakeRepo(20);
+    const emails: Array<{ text: string }> = [];
+    const email = { send: async (m: { text: string }) => { emails.push(m); } };
+    const cheapA = listing({ id: 'a', title: 'Flat A', price_per_m2: 16 });
+    const cheapB = listing({ id: 'b', title: 'Flat B', price_per_m2: 12 });
+    const fired = await notifyBelowMarket({ repo, config: cfg, listings: [cheapA, cheapB], email });
+    expect(fired).toHaveLength(2);
+    expect(emails).toHaveLength(1); // one combined email, not one per listing
+    expect(emails[0]!.text).toContain('Flat A');
+    expect(emails[0]!.text).toContain('Flat B');
+    expect(repo.hasAlertBeenSent('a', ALERT_TYPE_BELOW_MARKET)).toBe(true);
+    expect(repo.hasAlertBeenSent('b', ALERT_TYPE_BELOW_MARKET)).toBe(true);
+  });
+
   it('sends the alert to every configured recipient', async () => {
     const repo = fakeRepo(20);
     const sent: Array<{ to: string | string[] }> = [];
