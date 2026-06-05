@@ -1,0 +1,109 @@
+import type { Repository } from '../db/index.js';
+import type { AppConfig, ListingRow } from '../types.js';
+
+export interface Summary {
+  generatedAt: string;
+  activeCount: number;
+  newCount: number;
+  districts: ReturnType<Repository['computeCurrentDistrictStats']>;
+  newListings: ListingRow[];
+}
+
+export function buildSummary(
+  repo: Repository,
+  _config: AppConfig,
+  now: () => string = () => new Date().toISOString(),
+): Summary {
+  const nowIso = now();
+  const since = new Date(new Date(nowIso).getTime() - 24 * 60 * 60 * 1000).toISOString();
+  const newListings = repo.getNewListingsSince(since);
+  return {
+    generatedAt: nowIso,
+    activeCount: repo.countActive(),
+    newCount: newListings.length,
+    districts: repo.computeCurrentDistrictStats(),
+    newListings,
+  };
+}
+
+export interface TrendPoint {
+  date: string;
+  median: number | null;
+  avg: number | null;
+  count: number;
+}
+
+export interface TrendSeries {
+  district: number;
+  points: TrendPoint[];
+}
+
+export interface Trends {
+  dates: string[];
+  series: TrendSeries[];
+}
+
+// Pivot the daily stats history into per-district time series for charting.
+export function buildTrends(repo: Repository): Trends {
+  const history = repo.getDistrictStatsHistory();
+  const dates = [...new Set(history.map((r) => r.date))].sort();
+  const byDistrict = new Map<number, TrendPoint[]>();
+  for (const r of history) {
+    if (!byDistrict.has(r.district)) byDistrict.set(r.district, []);
+    byDistrict.get(r.district)!.push({
+      date: r.date,
+      median: r.median_price_per_m2,
+      avg: r.avg_price_per_m2,
+      count: r.active_count,
+    });
+  }
+  const series: TrendSeries[] = [...byDistrict.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([district, points]) => ({
+      district,
+      points: points.sort((a, b) => a.date.localeCompare(b.date)),
+    }));
+  return { dates, series };
+}
+
+export interface MapPoint {
+  id: string;
+  title: string | null;
+  url: string | null;
+  district: number | null;
+  rooms: number | null;
+  area_m2: number | null;
+  price: number | null;
+  price_per_m2: number | null;
+  lat: number | null;
+  lng: number | null;
+  districtMedian: number | null;
+  belowMedian: boolean;
+}
+
+// Active geocoded listings, each tagged with its district median for map coloring.
+export function buildMapData(repo: Repository): MapPoint[] {
+  const medians = new Map<number, number | null>();
+  for (const s of repo.computeCurrentDistrictStats()) {
+    medians.set(s.district, s.median_price_per_m2);
+  }
+  return repo.getListingsForMap().map((l) => {
+    const districtMedian = l.district != null ? medians.get(l.district) ?? null : null;
+    const belowMedian =
+      districtMedian != null && l.price_per_m2 != null && l.price_per_m2 < districtMedian;
+    return {
+      id: String(l.id),
+      title: l.title ?? null,
+      url: l.url ?? null,
+      district: l.district ?? null,
+      rooms: l.rooms ?? null,
+      area_m2: l.area_m2 ?? null,
+      price: l.price ?? null,
+      price_per_m2: l.price_per_m2 ?? null,
+      lat: l.lat ?? null,
+      lng: l.lng ?? null,
+      districtMedian,
+      belowMedian,
+    };
+  });
+}

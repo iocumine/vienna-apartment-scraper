@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    image: vienna-apartment-scraper
+    env_file: .env
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      # SQLite database and WhatsApp (Baileys) auth state persist here.
+      - ./data:/app/data
+    restart: unless-stopped
+    # Keep STDIN/TTY so you can read the WhatsApp QR code on first run:
+    #   docker compose up        (QR is printed to the logs)
+    stdin_open: true
+    tty: true

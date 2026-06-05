@@ -1,0 +1,72 @@
+{
+  "props": {
+    "pageProps": {
+      "searchResult": {
+        "advertSummaryList": {
+          "advertSummary": [
+            {
+              "id": "1001",
+              "description": "Helle 2-Zimmer Wohnung im 7. Bezirk",
+              "attributes": {
+                "attribute": [
+                  { "name": "PRICE", "values": ["950"] },
+                  { "name": "ESTATE_SIZE/LIVING_AREA", "values": ["50"] },
+                  { "name": "NUMBER_OF_ROOMS", "values": ["2"] },
+                  { "name": "POSTCODE", "values": ["1070"] },
+                  { "name": "COORDINATES", "values": ["48.2010,16.3450"] },
+                  { "name": "SEO_URL", "values": ["immobilien/d/mietwohnungen/wien/wien-1070-neubau/helle-wohnung-1001/"] },
+                  { "name": "PUBLISHED", "values": ["1717228800000"] }
+                ]
+              }
+            },
+            {
+              "id": "1002",
+              "description": "Guenstige Garconniere Alsergrund",
+              "attributes": {
+                "attribute": [
+                  { "name": "PRICE", "values": ["1.250,50"] },
+                  { "name": "ESTATE_SIZE/LIVING_AREA", "values": ["30"] },
+                  { "name": "NUMBER_OF_ROOMS", "values": ["1"] },
+                  { "name": "POSTCODE", "values": ["1090"] },
+                  { "name": "COORDINATES", "values": ["48.2250,16.3590"] },
+                  { "name": "SEO_URL", "values": ["immobilien/d/mietwohnungen/wien/wien-1090-alsergrund/garconniere-1002/"] },
+                  { "name": "PUBLISHED", "values": ["1717315200000"] }
+                ]
+              }
+            },
+            {
+              "id": "1003",
+              "description": "Grosse 4-Zimmer Wohnung Donaustadt",
+              "attributes": {
+                "attribute": [
+                  { "name": "PRICE", "values": ["1800"] },
+                  { "name": "ESTATE_SIZE/LIVING_AREA", "values": ["110"] },
+                  { "name": "NUMBER_OF_ROOMS", "values": ["4"] },
+                  { "name": "POSTCODE", "values": ["1220"] },
+                  { "name": "COORDINATES", "values": ["48.2340,16.4600"] },
+                  { "name": "SEO_URL", "values": ["immobilien/d/mietwohnungen/wien/wien-1220-donaustadt/wohnung-1003/"] },
+                  { "name": "PUBLISHED", "values": ["1717401600000"] }
+                ]
+              }
+            },
+            {
+              "id": "1004",
+              "description": "2-Zimmer Leopoldstadt naehe Prater",
+              "attributes": {
+                "attribute": [
+                  { "name": "PRICE", "values": ["1100"] },
+                  { "name": "ESTATE_SIZE/LIVING_AREA", "values": ["55"] },
+                  { "name": "NUMBER_OF_ROOMS", "values": ["2"] },
+                  { "name": "POSTCODE", "values": ["1020"] },
+                  { "name": "COORDINATES", "values": ["48.2170,16.3970"] },
+                  { "name": "SEO_URL", "values": ["immobilien/d/mietwohnungen/wien/wien-1020-leopoldstadt/wohnung-1004/"] },
+                  { "name": "PUBLISHED", "values": ["1717488000000"] }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

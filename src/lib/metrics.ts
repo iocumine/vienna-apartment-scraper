@@ -1,0 +1,36 @@
+export function round2(n: unknown): number | null {
+  if (n === null || n === undefined || !Number.isFinite(Number(n))) return null;
+  return Math.round(Number(n) * 100) / 100;
+}
+
+export function pricePerM2(price: unknown, areaM2: unknown): number | null {
+  const p = Number(price);
+  const a = Number(areaM2);
+  if (!Number.isFinite(p) || !Number.isFinite(a) || a <= 0 || p <= 0) return null;
+  return round2(p / a);
+}
+
+export function average(values: unknown[]): number | null {
+  const nums = (values || []).map(Number).filter((n) => Number.isFinite(n));
+  if (nums.length === 0) return null;
+  return round2(nums.reduce((sum, n) => sum + n, 0) / nums.length);
+}
+
+export function median(values: unknown[]): number | null {
+  const nums = (values || [])
+    .map(Number)
+    .filter((n) => Number.isFinite(n))
+    .sort((a, b) => a - b);
+  if (nums.length === 0) return null;
+  const mid = Math.floor(nums.length / 2);
+  const m = nums.length % 2 === 0 ? (nums[mid - 1]! + nums[mid]!) / 2 : nums[mid]!;
+  return round2(m);
+}
+
+// Fraction below the baseline: 0.2 means the value is 20% under baseline.
+export function deltaBelow(value: unknown, baseline: unknown): number | null {
+  const v = Number(value);
+  const b = Number(baseline);
+  if (!Number.isFinite(v) || !Number.isFinite(b) || b <= 0) return null;
+  return (b - v) / b;
+}
