@@ -87,12 +87,23 @@ describe('createEmailer', () => {
     expect(sent[0]).toMatchObject({ from: 'me@x.com', to: 'you@x.com', subject: 's' });
   });
 
+  it('passes an array of recipients through to the transport', async () => {
+    const sent: Record<string, unknown>[] = [];
+    const emailer = createEmailer(
+      { host: 'h', port: 1, secure: true, user: 'me@x.com', pass: 'p', from: 'me@x.com' },
+      { transport: { sendMail: async (o) => { sent.push(o); return {}; } } },
+    );
+    await emailer.send({ to: ['a@x.com', 'b@y.com'], subject: 's', text: 't' });
+    expect(sent[0]!.to).toEqual(['a@x.com', 'b@y.com']);
+  });
+
   it('rejects when recipient is missing', async () => {
     const emailer = createEmailer(
       { host: 'h', port: 1, secure: true, user: '', pass: '', from: '' },
       { transport: { sendMail: async () => ({}) } },
     );
     await expect(emailer.send({ to: '', subject: 's', text: 't' })).rejects.toThrow(/recipient/);
+    await expect(emailer.send({ to: [], subject: 's', text: 't' })).rejects.toThrow(/recipient/);
   });
 });
 
@@ -109,32 +120,39 @@ function fakeRepo(baseline: number | null): Repository {
 const cfg = {
   alertThresholdPct: 0.15,
   statsWindowDays: 30,
-  alertEmailTo: 'you@x.com',
-  whatsapp: { enabled: true, to: '4366012345', authDir: '' },
+  alertEmailTo: ['you@x.com'],
 } as AppConfig;
 
 describe('notifyBelowMarket', () => {
-  it('sends email + whatsapp and dedups below-market listings', async () => {
+  it('sends email and dedups below-market listings', async () => {
     const repo = fakeRepo(20);
     const emails: unknown[] = [];
-    const whats: unknown[] = [];
     const email = { send: async (m: unknown) => { emails.push(m); } };
-    const whatsapp = {
-      send: async (n: string, t: string) => { whats.push({ n, t }); },
-      close: async () => {},
-      enabled: true,
-    };
     const cheap = listing({ id: 'cheap', price_per_m2: 16 });
-    const fired = await notifyBelowMarket({ repo, config: cfg, listings: [cheap], email, whatsapp });
+    const fired = await notifyBelowMarket({ repo, config: cfg, listings: [cheap], email });
     expect(fired).toHaveLength(1);
     expect(emails).toHaveLength(1);
-    expect(whats).toHaveLength(1);
     expect(repo.hasAlertBeenSent('cheap', ALERT_TYPE_BELOW_MARKET)).toBe(true);
 
     // Second pass: already alerted -> nothing fires.
-    const again = await notifyBelowMarket({ repo, config: cfg, listings: [cheap], email, whatsapp });
+    const again = await notifyBelowMarket({ repo, config: cfg, listings: [cheap], email });
     expect(again).toHaveLength(0);
     expect(emails).toHaveLength(1);
+  });
+
+  it('sends the alert to every configured recipient', async () => {
+    const repo = fakeRepo(20);
+    const sent: Array<{ to: string | string[] }> = [];
+    const email = { send: async (m: { to: string | string[] }) => { sent.push(m); } };
+    const multiCfg = { ...cfg, alertEmailTo: ['a@x.com', 'b@y.com'] } as AppConfig;
+    const fired = await notifyBelowMarket({
+      repo,
+      config: multiCfg,
+      listings: [listing({ id: 'cheap', price_per_m2: 16 })],
+      email,
+    });
+    expect(fired).toHaveLength(1);
+    expect(sent[0]!.to).toEqual(['a@x.com', 'b@y.com']);
   });
 
   it('ignores listings that are not below market or lack a district', async () => {
@@ -145,49 +163,23 @@ describe('notifyBelowMarket', () => {
       config: cfg,
       listings: [listing({ id: 'ok', price_per_m2: 19 }), listing({ id: 'nodist', district: null, price_per_m2: 1 })],
       email,
-      whatsapp: null,
     });
     expect(fired).toHaveLength(0);
   });
 
-  it('still records the alert when only one channel succeeds', async () => {
+  it('does not record when the email send fails', async () => {
     const repo = fakeRepo(20);
     const warns: string[] = [];
     const email = { send: async () => { throw new Error('smtp down'); } };
-    const whatsapp = {
-      send: async () => {},
-      close: async () => {},
-      enabled: true,
-    };
     const fired = await notifyBelowMarket({
       repo,
       config: cfg,
       listings: [listing({ id: 'cheap', price_per_m2: 10 })],
       email,
-      whatsapp,
       logger: { warn: (m: unknown) => warns.push(String(m)) },
-    });
-    expect(fired).toHaveLength(1);
-    expect(warns.some((w) => w.includes('email alert failed'))).toBe(true);
-  });
-
-  it('does not record when all channels fail', async () => {
-    const repo = fakeRepo(20);
-    const email = { send: async () => { throw new Error('smtp down'); } };
-    const whatsapp = {
-      send: async () => { throw new Error('wa down'); },
-      close: async () => {},
-      enabled: true,
-    };
-    const fired = await notifyBelowMarket({
-      repo,
-      config: cfg,
-      listings: [listing({ id: 'cheap', price_per_m2: 10 })],
-      email,
-      whatsapp,
-      logger: { warn() {} },
     });
     expect(fired).toHaveLength(0);
     expect(repo.hasAlertBeenSent('cheap', ALERT_TYPE_BELOW_MARKET)).toBe(false);
+    expect(warns.some((w) => w.includes('email alert failed'))).toBe(true);
   });
 });

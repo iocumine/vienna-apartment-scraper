@@ -40,9 +40,8 @@ const baseConfig = {
   roomsMax: 2,
   alertThresholdPct: 0.15,
   statsWindowDays: 30,
-  alertEmailTo: 'you@x.com',
-  reportEmailTo: 'you@x.com',
-  whatsapp: { enabled: false, to: '', authDir: '' },
+  alertEmailTo: ['you@x.com'],
+  reportEmailTo: ['you@x.com'],
 } as AppConfig;
 
 describe('runPoll', () => {

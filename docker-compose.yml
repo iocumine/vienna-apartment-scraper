@@ -6,10 +6,6 @@ services:
     ports:
       - "${PORT:-5000}:3000"
     volumes:
-      # SQLite database and WhatsApp (Baileys) auth state persist here.
+      # SQLite database persists here.
       - ./data:/app/data
     restart: unless-stopped
-    # Keep STDIN/TTY so you can read the WhatsApp QR code on first run:
-    #   docker compose up        (QR is printed to the logs)
-    stdin_open: true
-    tty: true

@@ -9,12 +9,6 @@ export interface SmtpConfig {
   from: string;
 }
 
-export interface WhatsAppConfig {
-  enabled: boolean;
-  to: string;
-  authDir: string;
-}
-
 export interface AppConfig {
   transactionType: TransactionType;
   districts: number[];
@@ -29,9 +23,8 @@ export interface AppConfig {
   port: number;
   timezone: string;
   smtp: SmtpConfig;
-  alertEmailTo: string;
-  reportEmailTo: string;
-  whatsapp: WhatsAppConfig;
+  alertEmailTo: string[];
+  reportEmailTo: string[];
   requestDelayMs: number;
   maxPagesPerDistrict: number;
 }
@@ -93,7 +86,7 @@ export interface BelowMarketResult {
 }
 
 export interface EmailMessage {
-  to: string;
+  to: string | string[];
   subject: string;
   text: string;
   html?: string;
@@ -101,12 +94,6 @@ export interface EmailMessage {
 
 export interface Emailer {
   send(message: EmailMessage): Promise<unknown>;
-}
-
-export interface WhatsAppSender {
-  send(number: string, text: string): Promise<void>;
-  close(): Promise<void>;
-  enabled: boolean;
 }
 
 export interface Logger {

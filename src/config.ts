@@ -65,6 +65,18 @@ function str(value: string | undefined, fallback: string): string {
   return String(value);
 }
 
+// Parse a comma- (or semicolon-) separated list of email addresses into a
+// deduped array, falling back when nothing usable is provided.
+export function parseEmails(value: string | undefined | null, fallback: string[] = []): string[] {
+  if (value === undefined || value === null || String(value).trim() === '') return [...fallback];
+  const parsed = String(value)
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const deduped = [...new Set(parsed)];
+  return deduped.length > 0 ? deduped : [...fallback];
+}
+
 export function loadConfig(env: Env = process.env): AppConfig {
   const transactionType: TransactionType =
     str(env.TRANSACTION_TYPE, 'rent').toLowerCase() === 'buy' ? 'buy' : 'rent';
@@ -93,14 +105,8 @@ export function loadConfig(env: Env = process.env): AppConfig {
       pass: str(env.SMTP_PASS, ''),
       from: str(env.SMTP_FROM, env.SMTP_USER || ''),
     },
-    alertEmailTo: str(env.ALERT_EMAIL_TO, env.SMTP_USER || ''),
-    reportEmailTo: str(env.REPORT_EMAIL_TO, env.SMTP_USER || ''),
-
-    whatsapp: {
-      enabled: str(env.WHATSAPP_ENABLED, 'true') !== 'false',
-      to: str(env.WHATSAPP_TO, ''),
-      authDir: str(env.WHATSAPP_AUTH_DIR, 'data/whatsapp-auth'),
-    },
+    alertEmailTo: parseEmails(env.ALERT_EMAIL_TO, env.SMTP_USER ? [env.SMTP_USER] : []),
+    reportEmailTo: parseEmails(env.REPORT_EMAIL_TO, env.SMTP_USER ? [env.SMTP_USER] : []),
 
     requestDelayMs: num(env.REQUEST_DELAY_MS, 1500),
     maxPagesPerDistrict: num(env.MAX_PAGES_PER_DISTRICT, 5),

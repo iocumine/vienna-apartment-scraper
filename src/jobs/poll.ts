@@ -1,19 +1,12 @@
 import { scrape, type ScrapeDeps } from '../scraper/willhaben.js';
 import { notifyBelowMarket } from '../alerts/notify.js';
 import type { Repository } from '../db/index.js';
-import type {
-  AppConfig,
-  Emailer,
-  Logger,
-  NormalizedListing,
-  WhatsAppSender,
-} from '../types.js';
+import type { AppConfig, Emailer, Logger, NormalizedListing } from '../types.js';
 
 export interface PollDeps {
   repo: Repository;
   config: AppConfig;
   email?: Emailer | null;
-  whatsapp?: WhatsAppSender | null;
   scrapeFn?: (config: AppConfig, deps?: ScrapeDeps) => Promise<NormalizedListing[]>;
   scrapeDeps?: ScrapeDeps;
   now?: () => string;
@@ -31,7 +24,6 @@ export async function runPoll({
   repo,
   config,
   email = null,
-  whatsapp = null,
   scrapeFn = scrape,
   scrapeDeps = {},
   now = () => new Date().toISOString(),
@@ -51,7 +43,6 @@ export async function runPoll({
     config,
     listings: newListings,
     email,
-    whatsapp,
     logger,
   });
 

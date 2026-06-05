@@ -114,7 +114,7 @@ export async function runDailyReport({
   );
   const dateLabel = nowIso.slice(0, 10);
 
-  if (email && config.reportEmailTo) {
+  if (email && config.reportEmailTo.length > 0) {
     try {
       await email.send({
         to: config.reportEmailTo,

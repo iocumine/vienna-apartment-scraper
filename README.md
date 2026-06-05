@@ -4,7 +4,7 @@ A self-hosted TypeScript/Node.js service that periodically scrapes
 [willhaben.at](https://www.willhaben.at/) for 1-2 room apartments in selected
 Vienna districts, stores them in SQLite, tracks square-meter prices over time,
 serves a dashboard (charts + map), sends a daily report, and alerts you by
-email + WhatsApp when a new listing is priced below the district's usual sqm price.
+email when a new listing is priced below the district's usual sqm price.
 
 ## Features
 
@@ -16,12 +16,12 @@ email + WhatsApp when a new listing is priced below the district's usual sqm pri
   - `/trends` - median sqm price per district over time (Chart.js).
   - `/map` - listings on an OpenStreetMap/Leaflet map, colored by price vs district median.
 - Daily email report of the last 24h of new listings, grouped by district.
-- Below-market alerts via email (Gmail SMTP) and WhatsApp (unofficial, via Baileys).
+- Below-market alerts via email (Gmail SMTP), to one or more recipients.
 
 ## Tech stack
 
 - TypeScript on Node.js 22, ESM (`NodeNext`).
-- `better-sqlite3`, `express`, `node-cron`, `nodemailer`, `@whiskeysockets/baileys`.
+- `better-sqlite3`, `express`, `node-cron`, `nodemailer`.
 - Maps: Leaflet + OpenStreetMap (no API key). Charts: Chart.js (CDN).
 - Tests: Vitest with v8 coverage.
 
@@ -41,7 +41,7 @@ Key variables (see `.env.example` for the full list):
 - `POLL_INTERVAL_CRON` - how often to scrape (default every 45 min).
 - `ALERT_THRESHOLD_PCT` - fraction below district median that triggers an alert (default `0.15`).
 - `SMTP_USER` / `SMTP_PASS` - Gmail address + [app password](https://support.google.com/accounts/answer/185833).
-- `WHATSAPP_TO` - recipient number in international format (e.g. `4366012345678`).
+- `ALERT_EMAIL_TO` / `REPORT_EMAIL_TO` - recipient(s) for alerts and the daily report. Accepts a single address or a comma-separated list (e.g. `me@x.com, partner@y.com`); defaults to `SMTP_USER`.
 
 ## Run locally (development)
 
@@ -65,23 +65,7 @@ docker compose up --build
 ```
 
 - The dashboard is exposed on `PORT` (default 3000).
-- SQLite data and the WhatsApp session are persisted in `./data` (mounted volume).
-
-### WhatsApp first-run linking
-
-The WhatsApp integration uses Baileys (an unofficial WhatsApp Web client). On the
-first run it prints a QR code to the logs:
-
-```bash
-docker compose up   # watch the logs for the QR code
-```
-
-Scan it from WhatsApp on your phone (Linked devices). The session is then stored
-under `data/whatsapp-auth` and reused on subsequent runs. Set `WHATSAPP_ENABLED=false`
-to disable WhatsApp entirely (email still works).
-
-> Note: this uses an unofficial connection and carries a small risk of your number
-> being rate-limited or banned. It is intended for personal, low-volume use.
+- SQLite data is persisted in `./data` (mounted volume).
 
 ## Tests & coverage
 
@@ -105,7 +89,7 @@ src/
   db/                  # SQLite repository + schema.sql
   scraper/willhaben.ts # search URL builder, __NEXT_DATA__ parsing, normalize
   jobs/                # poll, computeStats, dailyReport
-  alerts/              # rules, formatting, email, whatsapp, notify orchestration
+  alerts/              # rules, formatting, email, notify orchestration
   web/                 # data builders, HTML views, express server
   index.ts             # boots scheduler + dashboard
   scripts/poll-once.ts # one-shot poll

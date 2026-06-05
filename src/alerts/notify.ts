@@ -8,7 +8,6 @@ import type {
   ListingRow,
   Logger,
   NormalizedListing,
-  WhatsAppSender,
 } from '../types.js';
 
 type ListingLike = NormalizedListing | ListingRow;
@@ -18,7 +17,6 @@ export interface NotifyDeps {
   config: AppConfig;
   listings: ListingLike[];
   email?: Emailer | null;
-  whatsapp?: WhatsAppSender | null;
   logger?: Logger;
 }
 
@@ -28,13 +26,12 @@ export interface FiredAlert {
 }
 
 // Evaluate freshly-seen listings against their district baseline and send
-// email + WhatsApp alerts for below-market ones, deduping via the repo.
+// email alerts for below-market ones, deduping via the repo.
 export async function notifyBelowMarket({
   repo,
   config,
   listings,
   email,
-  whatsapp,
   logger = console,
 }: NotifyDeps): Promise<FiredAlert[]> {
   const fired: FiredAlert[] = [];
@@ -51,20 +48,12 @@ export async function notifyBelowMarket({
     const html = formatAlertHtml(listing, evalResult);
 
     let delivered = false;
-    if (email && config.alertEmailTo) {
+    if (email && config.alertEmailTo.length > 0) {
       try {
         await email.send({ to: config.alertEmailTo, subject, text, html });
         delivered = true;
       } catch (err) {
         logger.warn?.(`email alert failed for ${listing.id}: ${(err as Error).message}`);
-      }
-    }
-    if (whatsapp && config.whatsapp?.enabled && config.whatsapp?.to) {
-      try {
-        await whatsapp.send(config.whatsapp.to, text);
-        delivered = true;
-      } catch (err) {
-        logger.warn?.(`whatsapp alert failed for ${listing.id}: ${(err as Error).message}`);
       }
     }
 

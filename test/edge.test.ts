@@ -102,45 +102,41 @@ describe('email without injected transport', () => {
   });
 });
 
-describe('notify channel branches', () => {
+describe('notify email recipient branches', () => {
   const cfg = {
     alertThresholdPct: 0.15,
     statsWindowDays: 30,
-    alertEmailTo: 'you@x.com',
-    whatsapp: { enabled: false, to: '', authDir: '' },
+    alertEmailTo: ['you@x.com'],
   } as AppConfig;
 
-  it('skips whatsapp when disabled and uses email only', async () => {
+  it('sends to all configured recipients', async () => {
+    const repo = createRepository(new Database(':memory:'));
+    repo.upsertDailyStats({ date: new Date().toISOString().slice(0, 10), district: 7, median_price_per_m2: 20, avg_price_per_m2: 20, active_count: 5 });
+    const sent: Array<{ to: string | string[] }> = [];
+    const multiCfg = { ...cfg, alertEmailTo: ['a@x.com', 'b@y.com'] } as AppConfig;
+    const fired = await notifyBelowMarket({
+      repo,
+      config: multiCfg,
+      listings: [listing({ id: 'cheap', price_per_m2: 10 })],
+      email: { send: async (m) => { sent.push(m as { to: string | string[] }); } },
+    });
+    expect(fired).toHaveLength(1);
+    expect(sent[0]!.to).toEqual(['a@x.com', 'b@y.com']);
+  });
+
+  it('skips email entirely when no recipients are configured', async () => {
     const repo = createRepository(new Database(':memory:'));
     repo.upsertDailyStats({ date: new Date().toISOString().slice(0, 10), district: 7, median_price_per_m2: 20, avg_price_per_m2: 20, active_count: 5 });
     const emails: unknown[] = [];
-    const whats: unknown[] = [];
+    const cfgNoRecipients = { ...cfg, alertEmailTo: [] } as AppConfig;
     const fired = await notifyBelowMarket({
       repo,
-      config: cfg,
+      config: cfgNoRecipients,
       listings: [listing({ id: 'cheap', price_per_m2: 10 })],
       email: { send: async (m) => { emails.push(m); } },
-      whatsapp: { send: async (n, t) => { whats.push({ n, t }); }, close: async () => {}, enabled: true },
     });
-    expect(fired).toHaveLength(1);
-    expect(emails).toHaveLength(1);
-    expect(whats).toHaveLength(0); // disabled in config
-  });
-
-  it('skips whatsapp when recipient number is empty', async () => {
-    const repo = createRepository(new Database(':memory:'));
-    repo.upsertDailyStats({ date: new Date().toISOString().slice(0, 10), district: 7, median_price_per_m2: 20, avg_price_per_m2: 20, active_count: 5 });
-    const whats: unknown[] = [];
-    const cfgNoNumber = { ...cfg, whatsapp: { enabled: true, to: '', authDir: '' } } as AppConfig;
-    const fired = await notifyBelowMarket({
-      repo,
-      config: cfgNoNumber,
-      listings: [listing({ id: 'cheap', price_per_m2: 10 })],
-      email: { send: async () => {} },
-      whatsapp: { send: async (n, t) => { whats.push({ n, t }); }, close: async () => {}, enabled: true },
-    });
-    expect(fired).toHaveLength(1);
-    expect(whats).toHaveLength(0);
+    expect(fired).toHaveLength(0);
+    expect(emails).toHaveLength(0);
   });
 });
 
@@ -166,8 +162,7 @@ describe('db extra coverage', () => {
 describe('jobs run with default deps', () => {
   const cfg = {
     transactionType: 'rent', districts: [7], roomsMin: 1, roomsMax: 2,
-    alertThresholdPct: 0.15, statsWindowDays: 30, alertEmailTo: '', reportEmailTo: '',
-    whatsapp: { enabled: false, to: '', authDir: '' },
+    alertThresholdPct: 0.15, statsWindowDays: 30, alertEmailTo: [], reportEmailTo: [],
   } as AppConfig;
 
   it('runStatsSnapshot/runPoll/runDailyReport use default now+logger', async () => {
@@ -186,7 +181,7 @@ describe('jobs run with default deps', () => {
     const repo = createRepository(new Database(':memory:'));
     repo.upsertListing(listing({ id: 'fresh' }));
     const warns: string[] = [];
-    const cfgWithEmail = { ...cfg, reportEmailTo: 'you@x.com' } as AppConfig;
+    const cfgWithEmail = { ...cfg, reportEmailTo: ['you@x.com'] } as AppConfig;
     const summary = await runDailyReport({
       repo,
       config: cfgWithEmail,

@@ -16,7 +16,6 @@ export default defineConfig({
         'src/types.ts',
         'src/web/views.ts',
         'src/web/server.ts',
-        'src/alerts/whatsapp.ts',
         'src/index.ts',
         'src/scripts/**',
       ],

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   loadConfig,
   parseDistricts,
+  parseEmails,
   postcodeForDistrict,
   districtForPostcode,
   DEFAULT_DISTRICTS,
@@ -47,6 +48,22 @@ describe('parseDistricts', () => {
   });
 });
 
+describe('parseEmails', () => {
+  it('parses a comma- or semicolon-separated list and trims', () => {
+    expect(parseEmails('a@x.com, b@y.com;c@z.com')).toEqual(['a@x.com', 'b@y.com', 'c@z.com']);
+  });
+
+  it('dedups repeated addresses', () => {
+    expect(parseEmails('a@x.com, a@x.com')).toEqual(['a@x.com']);
+  });
+
+  it('falls back when empty or missing', () => {
+    expect(parseEmails('', ['fallback@x.com'])).toEqual(['fallback@x.com']);
+    expect(parseEmails(undefined, ['fallback@x.com'])).toEqual(['fallback@x.com']);
+    expect(parseEmails('   ')).toEqual([]);
+  });
+});
+
 describe('loadConfig', () => {
   it('applies sensible defaults from an empty env', () => {
     const cfg = loadConfig({});
@@ -73,8 +90,18 @@ describe('loadConfig', () => {
     expect(cfg.roomsMin).toBe(2);
     expect(cfg.alertThresholdPct).toBeCloseTo(0.2);
     expect(cfg.port).toBe(8080);
-    expect(cfg.alertEmailTo).toBe('me@gmail.com');
+    expect(cfg.alertEmailTo).toEqual(['me@gmail.com']);
     expect(cfg.smtp.from).toBe('me@gmail.com');
+  });
+
+  it('parses multiple alert/report recipients and defaults them to SMTP_USER', () => {
+    const cfg = loadConfig({
+      SMTP_USER: 'me@gmail.com',
+      ALERT_EMAIL_TO: 'a@x.com, b@y.com',
+    });
+    expect(cfg.alertEmailTo).toEqual(['a@x.com', 'b@y.com']);
+    // REPORT_EMAIL_TO unset -> falls back to SMTP_USER.
+    expect(cfg.reportEmailTo).toEqual(['me@gmail.com']);
   });
 
   it('defaults numeric fields when given garbage', () => {

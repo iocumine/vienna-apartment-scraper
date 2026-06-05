@@ -22,7 +22,7 @@ COPY package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 
-# Persisted at runtime via a volume (SQLite db + WhatsApp auth).
+# Persisted at runtime via a volume (SQLite db).
 RUN mkdir -p data
 
 EXPOSE 3000

@@ -20,8 +20,11 @@ export function createEmailer(
     });
 
   async function send({ to, subject, text, html }: EmailMessage): Promise<unknown> {
-    if (!to) throw new Error('email recipient (to) is required');
-    return tx.sendMail({ from: smtp.from || smtp.user, to, subject, text, html });
+    const recipients = Array.isArray(to) ? to.filter(Boolean) : to;
+    if (!recipients || (Array.isArray(recipients) && recipients.length === 0)) {
+      throw new Error('email recipient (to) is required');
+    }
+    return tx.sendMail({ from: smtp.from || smtp.user, to: recipients, subject, text, html });
   }
 
   return { send };
