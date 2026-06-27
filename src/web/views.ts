@@ -226,6 +226,9 @@ export function renderOverview(summary: Summary): string {
       <a class="card card-link" href="/listings" title="View all active listings"><div class="n">${summary.activeCount}</div>active listings</a>
       <a class="card card-link" href="/new-listings" title="View new listings (last 24h)"><div class="n">${summary.newCount}</div>new in last 24h</a>
       <div class="card"><div class="n">${summary.districts.length}</div>districts tracked</div>
+      <div class="card" title="Willhaben HTTP requests in the rolling last 60 seconds"><div class="n">${summary.willhabenRequestsLast60s}</div>requests last 60s</div>
+      <div class="card" title="Configured willhaben request cap per rolling 60-second window"><div class="n">${summary.willhabenRequestsPerMinute}</div>max requests / min</div>
+      <a class="card card-link" href="/listings" title="Active listings not seen in recent polls"><div class="n">${summary.pendingVerificationCount}</div>pending verification</a>
     </div>
     <h2>Median sqm price by district (monitored period)</h2>
     <table id="district-stats" class="sortable">

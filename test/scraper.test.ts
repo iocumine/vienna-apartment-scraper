@@ -20,6 +20,7 @@ import {
   recordWillhabenForbidden,
   resetWillhabenAccessStatus,
 } from '../src/lib/willhabenStatus.js';
+import { resetWillhabenRequestTracking } from '../src/lib/rateLimit.js';
 import type { AppConfig } from '../src/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -171,7 +172,10 @@ describe('filterListings', () => {
 });
 
 describe('fetchPage', () => {
-  beforeEach(() => resetWillhabenAccessStatus());
+  beforeEach(() => {
+    resetWillhabenAccessStatus();
+    resetWillhabenRequestTracking();
+  });
 
   it('fetches HTML and returns normalized listings', async () => {
     const html = `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(fixture)}</script>`;

@@ -4,6 +4,7 @@ import { createRepository, type Repository } from '../src/db/index.js';
 import { buildSummary, buildTrends, buildMapData, buildActiveListings, buildNewListings } from '../src/web/data.js';
 import { renderOverview, renderTrends, renderMap, renderListings, renderNewListings } from '../src/web/views.js';
 import { resetWillhabenAccessStatus, recordWillhabenForbidden, recordVerificationDeferred } from '../src/lib/willhabenStatus.js';
+import { recordWillhabenRequest, resetWillhabenRequestTracking } from '../src/lib/rateLimit.js';
 import type { AppConfig, NormalizedListing } from '../src/types.js';
 
 function repoAt(now: string): Repository {
@@ -18,10 +19,13 @@ function listing(over: Partial<NormalizedListing> = {}): NormalizedListing {
   };
 }
 
-const config = {} as AppConfig;
+const config = { willhabenRequestsPerMinute: 25 } as AppConfig;
 
 describe('buildSummary', () => {
-  beforeEach(() => resetWillhabenAccessStatus());
+  beforeEach(() => {
+    resetWillhabenAccessStatus();
+    resetWillhabenRequestTracking();
+  });
 
   it('counts active and last-24h listings plus period district stats', () => {
     const repo = repoAt('2026-06-06T12:00:00.000Z');
@@ -36,6 +40,20 @@ describe('buildSummary', () => {
     expect(summary.districts[0]).toMatchObject({ district: 7, median_price_per_m2: 20, active_count: 1 });
     expect(summary.districts[1]).toMatchObject({ district: 9, median_price_per_m2: 30, active_count: 1 });
     expect(summary.uiAlerts.willhabenAccess.forbidden).toBe(false);
+  });
+
+  it('includes request rate and pending verification counts', () => {
+    const repo = repoAt('2026-06-06T12:00:00.000Z');
+    repo.upsertListing(listing({ id: 'a1' }));
+    repo.upsertListing(listing({ id: 'pending' }));
+    repo.db.prepare('UPDATE listings SET miss_count = 1 WHERE id = ?').run('pending');
+    recordWillhabenRequest(new Date('2026-06-06T12:00:00.000Z').getTime() - 5_000);
+    recordWillhabenRequest(new Date('2026-06-06T12:00:00.000Z').getTime() - 2_000);
+
+    const summary = buildSummary(repo, config, () => '2026-06-06T12:00:00.000Z');
+    expect(summary.willhabenRequestsLast60s).toBe(2);
+    expect(summary.willhabenRequestsPerMinute).toBe(25);
+    expect(summary.pendingVerificationCount).toBe(1);
   });
 
   it('includes willhaben 403 status in the summary payload', () => {
@@ -173,6 +191,9 @@ describe('views render valid html', () => {
     expect(overview).not.toContain('id="listings-table"');
     expect(overview).toContain('href="/listings"');
     expect(overview).toContain('href="/new-listings"');
+    expect(overview).toContain('requests last 60s');
+    expect(overview).toContain('max requests / min');
+    expect(overview).toContain('pending verification');
     // District stats table is sortable by clicking column headers.
     expect(overview).toContain('id="district-stats"');
     expect(overview).toContain('class="sortable"');

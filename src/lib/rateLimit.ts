@@ -4,6 +4,32 @@ export interface RateLimiter {
   wouldBlock(): boolean;
 }
 
+const REQUEST_WINDOW_MS = 60_000;
+const globalRequestTimestamps: number[] = [];
+
+function pruneRequestTimestamps(current: number): void {
+  while (
+    globalRequestTimestamps.length > 0 &&
+    globalRequestTimestamps[0]! <= current - REQUEST_WINDOW_MS
+  ) {
+    globalRequestTimestamps.shift();
+  }
+}
+
+export function recordWillhabenRequest(at: number = Date.now()): void {
+  globalRequestTimestamps.push(at);
+  pruneRequestTimestamps(at);
+}
+
+export function countWillhabenRequestsLast60s(now: number = Date.now()): number {
+  pruneRequestTimestamps(now);
+  return globalRequestTimestamps.length;
+}
+
+export function resetWillhabenRequestTracking(): void {
+  globalRequestTimestamps.length = 0;
+}
+
 export interface RateLimiterDeps {
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;

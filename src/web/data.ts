@@ -1,4 +1,5 @@
 import { movingAverage } from '../lib/metrics.js';
+import { countWillhabenRequestsLast60s } from '../lib/rateLimit.js';
 import { getUiAlerts, type UiAlerts } from '../lib/willhabenStatus.js';
 import type { Repository } from '../db/index.js';
 import type { AppConfig, ListingRow } from '../types.js';
@@ -10,11 +11,14 @@ export interface Summary {
   districts: ReturnType<Repository['computePeriodDistrictStats']>;
   newListings: ListingRow[];
   uiAlerts: UiAlerts;
+  willhabenRequestsLast60s: number;
+  willhabenRequestsPerMinute: number;
+  pendingVerificationCount: number;
 }
 
 export function buildSummary(
   repo: Repository,
-  _config: AppConfig,
+  config: AppConfig,
   now: () => string = () => new Date().toISOString(),
 ): Summary {
   const nowIso = now();
@@ -27,6 +31,9 @@ export function buildSummary(
     districts: repo.computePeriodDistrictStats(),
     newListings,
     uiAlerts: getUiAlerts(),
+    willhabenRequestsLast60s: countWillhabenRequestsLast60s(new Date(nowIso).getTime()),
+    willhabenRequestsPerMinute: config.willhabenRequestsPerMinute ?? 25,
+    pendingVerificationCount: repo.countPendingVerification(),
   };
 }
 

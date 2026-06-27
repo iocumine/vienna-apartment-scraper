@@ -261,4 +261,12 @@ describe('repository: alerts dedup + map', () => {
     const rows = repo.getNewListingsSince('2026-06-02T00:00:00.000Z');
     expect(rows.map((r) => r.id)).toEqual(['new']);
   });
+
+  it('counts active listings pending verification', () => {
+    const repo = makeRepo(() => '2026-06-01T12:00:00.000Z');
+    repo.upsertListing(listing({ id: 'a1' }));
+    repo.upsertListing(listing({ id: 'a2' }));
+    repo.db.prepare('UPDATE listings SET miss_count = 2 WHERE id = ?').run('a1');
+    expect(repo.countPendingVerification()).toBe(1);
+  });
 });

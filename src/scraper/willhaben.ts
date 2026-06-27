@@ -1,5 +1,6 @@
 import { districtForPostcode, postcodeForDistrict } from '../config.js';
 import type { RateLimiter } from '../lib/rateLimit.js';
+import { recordWillhabenRequest } from '../lib/rateLimit.js';
 import {
   recordWillhabenForbidden,
   recordWillhabenSuccess,
@@ -251,6 +252,7 @@ export async function fetchPage(
   }: { fetchImpl?: FetchLike; rateLimiter?: RateLimiter } = {},
 ): Promise<NormalizedListing[]> {
   await rateLimiter?.acquire();
+  recordWillhabenRequest();
   const res = await fetchImpl(url, {
     headers: {
       'User-Agent':

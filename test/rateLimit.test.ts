@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { createRateLimiter } from '../src/lib/rateLimit.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createRateLimiter, countWillhabenRequestsLast60s, recordWillhabenRequest, resetWillhabenRequestTracking } from '../src/lib/rateLimit.js';
 
 describe('createRateLimiter', () => {
   it('allows up to maxPerMinute requests without waiting', async () => {
@@ -53,5 +53,17 @@ describe('createRateLimiter', () => {
     expect(limiter.wouldBlock()).toBe(false);
     await limiter.acquire();
     expect(limiter.wouldBlock()).toBe(true);
+  });
+});
+
+describe('willhaben request tracking', () => {
+  beforeEach(() => resetWillhabenRequestTracking());
+
+  it('counts requests in the rolling last 60 seconds', () => {
+    const now = 1_000_000;
+    recordWillhabenRequest(now - 61_000);
+    recordWillhabenRequest(now - 30_000);
+    recordWillhabenRequest(now - 10_000);
+    expect(countWillhabenRequestsLast60s(now)).toBe(2);
   });
 });
