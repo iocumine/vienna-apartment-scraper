@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import { createRepository, type Repository } from '../src/db/index.js';
 import { buildSummary, buildTrends, buildMapData, buildActiveListings, buildNewListings, buildPendingVerificationListings, buildVerifiedRemovedListings, buildStoredDataStats } from '../src/web/data.js';
 import { renderOverview, renderTrends, renderMap, renderListings, renderNewListings, renderPendingVerificationListings, renderVerifiedRemovedListings, renderWillhabenRequests } from '../src/web/views.js';
+import { APP_VERSION } from '../src/lib/version.js';
 import { parseDistrictQuery } from '../src/web/server.js';
 import { resetWillhabenAccessStatus, recordWillhabenForbidden, recordVerificationDeferred } from '../src/lib/willhabenStatus.js';
 import { recordWillhabenRequest, resetWillhabenRequestTracking, getWillhabenRequestsLast60s } from '../src/lib/rateLimit.js';
@@ -292,6 +293,7 @@ describe('views render valid html', () => {
     const overview = renderOverview(buildSummary(repo, config, () => '2026-06-06T12:00:00.000Z'));
     expect(overview).toContain('<!doctype html>');
     expect(overview).toContain('Overview');
+    expect(overview).toContain(`class="app-version">v${APP_VERSION}</span>`);
     // Overview no longer embeds the new-listings table; both tiles link out.
     expect(overview).not.toContain('id="listings-table"');
     expect(overview).toContain('href="/listings"');

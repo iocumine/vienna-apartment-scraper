@@ -1,4 +1,5 @@
 import { escapeHtml, eur, formatBytes, formatDuration, formatReqPerMinute } from '../alerts/format.js';
+import { APP_VERSION } from '../lib/version.js';
 import type { UiAlerts } from '../lib/willhabenStatus.js';
 import type { Summary, Trends, MapPoint, ListingsRow } from './data.js';
 
@@ -50,6 +51,7 @@ function layout(
     header { background: #1f2937; color: #fff; padding: 12px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
     header a { color: #cbd5e1; text-decoration: none; }
     header a:hover { color: #fff; }
+    .app-version { margin-left: auto; font-size: 12px; color: #94a3b8; white-space: nowrap; }
     .alert-forbidden { background: #fef2f2; color: #991b1b; border-bottom: 1px solid #fecaca; padding: 12px 20px; font-size: 14px; line-height: 1.45; }
     .alert-rate-limit { background: #fffbeb; color: #92400e; border-bottom: 1px solid #fde68a; padding: 12px 20px; font-size: 14px; line-height: 1.45; }
     main { padding: 20px; max-width: 1100px; margin: 0 auto; }
@@ -119,6 +121,7 @@ function layout(
   <header>
     <strong>Vienna Apartments</strong>
     ${nav}
+    <span class="app-version">v${escapeHtml(APP_VERSION)}</span>
   </header>
   ${siteAlertsHtml(uiAlerts)}
   <main>${body}</main>

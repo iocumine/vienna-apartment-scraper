@@ -22,6 +22,7 @@ import type { Repository } from '../db/index.js';
 import type { AppConfig } from '../types.js';
 import { getUiAlerts } from '../lib/willhabenStatus.js';
 import { getWillhabenRequestsLast60s } from '../lib/rateLimit.js';
+import { APP_VERSION } from '../lib/version.js';
 
 export function parseDistrictQuery(raw: unknown): number | null {
   if (raw === undefined || raw === null || String(raw).trim() === '') return null;
@@ -89,7 +90,7 @@ export function createServer(repo: Repository, config: AppConfig): Express {
   });
 
   app.get('/health', (_req, res) => {
-    res.json({ status: 'ok', active: repo.countActive() });
+    res.json({ status: 'ok', active: repo.countActive(), version: APP_VERSION });
   });
 
   return app;
