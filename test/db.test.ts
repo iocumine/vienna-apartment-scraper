@@ -282,4 +282,13 @@ describe('repository: alerts dedup + map', () => {
     expect(repo.countVerifiedRemoved()).toBe(1);
     expect(repo.getVerifiedRemovedListings().map((r) => r.id)).toEqual(['gone']);
   });
+
+  it('counts all stored listings including inactive ones', () => {
+    const repo = makeRepo(() => '2026-06-01T12:00:00.000Z');
+    repo.upsertListing(listing({ id: 'a1' }));
+    repo.upsertListing(listing({ id: 'a2' }));
+    repo.deactivateListing('a2');
+    expect(repo.countListings()).toBe(2);
+    expect(repo.countActive()).toBe(1);
+  });
 });

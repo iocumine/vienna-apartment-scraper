@@ -1,4 +1,4 @@
-import { escapeHtml, eur, formatDuration, formatReqPerMinute } from '../alerts/format.js';
+import { escapeHtml, eur, formatBytes, formatDuration, formatReqPerMinute } from '../alerts/format.js';
 import type { UiAlerts } from '../lib/willhabenStatus.js';
 import type { Summary, Trends, MapPoint, ListingsRow } from './data.js';
 
@@ -76,6 +76,7 @@ function layout(
     .card-stats { min-width: 200px; }
     .card-stats-title { font-size: 13px; color: #6b7280; margin-bottom: 10px; }
     .card-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .card-stats-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
     .card-stat .n { font-size: 20px; font-weight: 700; line-height: 1.2; }
     .card-stat .label { font-size: 11px; color: #6b7280; margin-top: 2px; }
     #map { height: 600px; border-radius: 8px; }
@@ -239,6 +240,17 @@ export function renderOverview(summary: Summary): string {
         </div>
       </div>`
     : '';
+  const storedDataTile = summary.showWillhabenRequestStats
+    ? `<div class="cards">
+      <div class="card card-stats" title="SQLite listing records and on-disk database size">
+        <div class="card-stats-title">stored data</div>
+        <div class="card-stats-grid cols-2">
+          <div class="card-stat"><div class="n">${summary.storedDataStats.recordCount}</div><div class="label">listings stored</div></div>
+          <div class="card-stat"><div class="n">${escapeHtml(formatBytes(summary.storedDataStats.diskUsageBytes))}</div><div class="label">database size</div></div>
+        </div>
+      </div>
+    </div>`
+    : '';
   const body = `
     <h1>Overview</h1>
     <div class="card-rows">
@@ -252,6 +264,7 @@ export function renderOverview(summary: Summary): string {
         <div class="card"><div class="n">${summary.districts.length}</div>districts tracked</div>
         ${requestStatsTiles}
       </div>
+      ${storedDataTile}
     </div>
     <h2>Median sqm price by district (monitored period)</h2>
     <table id="district-stats" class="sortable">

@@ -1,8 +1,14 @@
 import { movingAverage } from '../lib/metrics.js';
 import { countWillhabenRequestsLast60s, getWillhabenRequestStatsSinceStartup, type WillhabenRequestStatsSinceStartup } from '../lib/rateLimit.js';
+import { getDatabaseDiskUsageBytes } from '../lib/dbStorage.js';
 import { getUiAlerts, type UiAlerts } from '../lib/willhabenStatus.js';
 import type { Repository } from '../db/index.js';
 import type { AppConfig, ListingRow } from '../types.js';
+
+export interface StoredDataStats {
+  recordCount: number;
+  diskUsageBytes: number | null;
+}
 
 export interface Summary {
   generatedAt: string;
@@ -17,6 +23,14 @@ export interface Summary {
   pendingVerificationCount: number;
   verifiedRemovedCount: number;
   showWillhabenRequestStats: boolean;
+  storedDataStats: StoredDataStats;
+}
+
+export function buildStoredDataStats(repo: Repository, dbPath: string): StoredDataStats {
+  return {
+    recordCount: repo.countListings(),
+    diskUsageBytes: getDatabaseDiskUsageBytes(dbPath),
+  };
 }
 
 export function buildSummary(
@@ -40,6 +54,7 @@ export function buildSummary(
     pendingVerificationCount: repo.countPendingVerification(),
     verifiedRemovedCount: repo.countVerifiedRemoved(),
     showWillhabenRequestStats: config.showWillhabenRequestStats ?? false,
+    storedDataStats: buildStoredDataStats(repo, config.dbPath ?? 'data/listings.db'),
   };
 }
 

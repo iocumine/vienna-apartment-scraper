@@ -332,6 +332,10 @@ export function createRepository(db: DB, options: RepositoryOptions = {}) {
     }).n;
   }
 
+  function countListings(): number {
+    return (db.prepare('SELECT COUNT(*) AS n FROM listings').get() as { n: number }).n;
+  }
+
   function countPendingVerification(): number {
     return (
       db.prepare('SELECT COUNT(*) AS n FROM listings WHERE is_active = 1 AND miss_count > 0').get() as {
@@ -396,6 +400,7 @@ export function createRepository(db: DB, options: RepositoryOptions = {}) {
     recordAlertSent,
     getListingsForMap,
     countActive,
+    countListings,
     countPendingVerification,
     getPendingVerificationListings,
     getVerifiedRemovedListings,

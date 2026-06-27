@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createRepository, type Repository } from '../src/db/index.js';
-import { buildSummary, buildTrends, buildMapData, buildActiveListings, buildNewListings, buildPendingVerificationListings, buildVerifiedRemovedListings } from '../src/web/data.js';
+import { buildSummary, buildTrends, buildMapData, buildActiveListings, buildNewListings, buildPendingVerificationListings, buildVerifiedRemovedListings, buildStoredDataStats } from '../src/web/data.js';
 import { renderOverview, renderTrends, renderMap, renderListings, renderNewListings, renderPendingVerificationListings, renderVerifiedRemovedListings, renderWillhabenRequests } from '../src/web/views.js';
 import { parseDistrictQuery } from '../src/web/server.js';
 import { resetWillhabenAccessStatus, recordWillhabenForbidden, recordVerificationDeferred } from '../src/lib/willhabenStatus.js';
@@ -20,7 +20,7 @@ function listing(over: Partial<NormalizedListing> = {}): NormalizedListing {
   };
 }
 
-const config = { willhabenRequestsPerMinute: 25 } as AppConfig;
+const config = { willhabenRequestsPerMinute: 25, dbPath: ':memory:' } as AppConfig;
 
 describe('buildSummary', () => {
   beforeEach(() => {
@@ -69,6 +69,20 @@ describe('buildSummary', () => {
 
     const summary = buildSummary(repo, config, () => '2026-06-06T12:00:00.000Z');
     expect(summary.verifiedRemovedCount).toBe(1);
+  });
+
+  it('includes stored data stats', () => {
+    const repo = repoAt('2026-06-06T12:00:00.000Z');
+    repo.upsertListing(listing({ id: 'a1' }));
+    repo.upsertListing(listing({ id: 'a2' }));
+    repo.deactivateListing('a2');
+
+    const stats = buildStoredDataStats(repo, ':memory:');
+    expect(stats.recordCount).toBe(2);
+    expect(stats.diskUsageBytes).toBeNull();
+
+    const summary = buildSummary(repo, config, () => '2026-06-06T12:00:00.000Z');
+    expect(summary.storedDataStats.recordCount).toBe(2);
   });
 
   it('includes willhaben 403 status in the summary payload', () => {
@@ -289,6 +303,7 @@ describe('views render valid html', () => {
     expect(overview).toContain('class="card-rows"');
     expect(overview).not.toContain('requests last 60s');
     expect(overview).not.toContain('max requests / min');
+    expect(overview).not.toContain('stored data');
     // Row 1: listing tiles before districts.
     expect(overview.indexOf('active listings')).toBeLessThan(overview.indexOf('districts tracked'));
     expect(overview.indexOf('new in last 24h')).toBeLessThan(overview.indexOf('districts tracked'));
@@ -417,7 +432,11 @@ describe('views render valid html', () => {
     expect(overview).toContain('since startup');
     expect(overview).toContain('avg req/min');
     expect(overview).toContain('uptime');
+    expect(overview).toContain('stored data');
+    expect(overview).toContain('listings stored');
+    expect(overview).toContain('database size');
     expect(overview.indexOf('districts tracked')).toBeLessThan(overview.indexOf('requests last 60s'));
+    expect(overview.indexOf('requests last 60s')).toBeLessThan(overview.indexOf('stored data'));
   });
 
   it('renders empty states', () => {
