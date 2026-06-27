@@ -91,6 +91,16 @@ describe('views render valid html', () => {
     expect(trends).toContain('"district":7');
     // Main all-districts tile plus the per-district tile controls.
     expect(trends).toContain('id="main-chart"');
+    // Switch to flip the main chart between raw and the moving averages.
+    expect(trends).toContain('id="main-series"');
+    expect(trends).toContain('<option value="median">Raw data points</option>');
+    expect(trends).toContain('<option value="ma5">5-day moving average</option>');
+    expect(trends).toContain('<option value="ma20">20-day moving average</option>');
+    expect(trends).toContain('buildMainDatasets');
+    // Hovering a line emphasizes it by thickening its stroke.
+    expect(trends).toContain('emphasizeHovered');
+    // The selected main series persists across refreshes.
+    expect(trends).toContain('vienna.trends.mainSeries');
     expect(trends).toContain('id="district-select"');
     expect(trends).toContain('id="add-tile"');
     expect(trends).toContain('<option value="7">District 7</option>');

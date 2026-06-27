@@ -24,7 +24,9 @@ function layout(title: string, nav: string, body: string): string {
     #map { height: 600px; border-radius: 8px; }
     .tile { position: relative; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 0 0 16px; }
     .tile h2 { margin: 0 28px 12px 0; font-size: 16px; }
-    .tile .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .tile .head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+    .series-toggle { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+    .series-toggle select { font-size: 14px; padding: 6px 8px; border-radius: 6px; border: 1px solid #d1d5db; }
     .chart-wrap { position: relative; width: 100%; height: 320px; }
     .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     .controls select, .controls button { font-size: 16px; padding: 8px 10px; border-radius: 6px; border: 1px solid #d1d5db; }
@@ -98,7 +100,17 @@ export function renderTrends(trends: Trends): string {
     <h1>Square-meter price trends</h1>
 
     <section class="tile">
-      <div class="head"><h2>All districts &mdash; raw median EUR/m&sup2;</h2></div>
+      <div class="head">
+        <h2>All districts &mdash; EUR/m&sup2;</h2>
+        <div class="series-toggle">
+          <label for="main-series">Series:</label>
+          <select id="main-series" aria-label="Main chart series">
+            <option value="median">Raw data points</option>
+            <option value="ma5">5-day moving average</option>
+            <option value="ma20">20-day moving average</option>
+          </select>
+        </div>
+      </div>
       <div class="chart-wrap"><canvas id="main-chart"></canvas></div>
     </section>
 
@@ -119,12 +131,28 @@ export function renderTrends(trends: Trends): string {
       const seriesByDistrict = {};
       trends.series.forEach(function (s) { seriesByDistrict[s.district] = s; });
 
+      const BASE_WIDTH = 2, EMPHASIZED_WIDTH = 4, DIMMED_WIDTH = 1;
+
+      // Thicken the line nearest the cursor and thin the rest; reset when the
+      // pointer is not over any line (including on mouseout).
+      function emphasizeHovered(chart, evt) {
+        const els = chart.getElementsAtEventForMode(evt.native || evt, 'nearest', { intersect: false }, true);
+        const hovered = els.length ? els[0].datasetIndex : -1;
+        let changed = false;
+        chart.data.datasets.forEach(function (ds, i) {
+          const target = hovered === -1 ? BASE_WIDTH : (i === hovered ? EMPHASIZED_WIDTH : DIMMED_WIDTH);
+          if (ds.borderWidth !== target) { ds.borderWidth = target; changed = true; }
+        });
+        if (changed) chart.update('none');
+      }
+
       function baseOptions(yTitle) {
         return {
           responsive: true,
           maintainAspectRatio: false,
           parsing: false,
           interaction: { mode: 'index', intersect: false },
+          onHover: function (evt, _active, chart) { emphasizeHovered(chart, evt); },
           scales: {
             x: { type: 'category', labels: labels },
             y: { title: { display: true, text: yTitle } }
@@ -136,21 +164,41 @@ export function renderTrends(trends: Trends): string {
         return s.points.map(function (p) { return { x: p.date, y: p[key] }; });
       }
 
-      // Main tile: raw median for every district on one graph.
-      const mainDatasets = trends.series.map(function (s, i) {
-        return {
-          label: 'District ' + s.district,
-          data: points(s, 'median'),
-          borderColor: palette[i % palette.length],
-          backgroundColor: palette[i % palette.length],
-          spanGaps: true,
-          tension: 0.2
-        };
-      });
-      new Chart(document.getElementById('main-chart'), {
+      // Main tile: one line per district. The series (raw median / 5-day MA /
+      // 20-day MA) is switchable for all districts at once.
+      function buildMainDatasets(key) {
+        return trends.series.map(function (s, i) {
+          return {
+            label: 'District ' + s.district,
+            data: points(s, key),
+            borderColor: palette[i % palette.length],
+            backgroundColor: palette[i % palette.length],
+            borderWidth: BASE_WIDTH,
+            spanGaps: true,
+            tension: 0.2
+          };
+        });
+      }
+      const MAIN_SERIES_KEY = 'vienna.trends.mainSeries';
+      const mainSelect = document.getElementById('main-series');
+      const allowedSeries = ['median', 'ma5', 'ma20'];
+      let savedSeries = 'median';
+      try {
+        const stored = localStorage.getItem(MAIN_SERIES_KEY);
+        if (allowedSeries.indexOf(stored) !== -1) savedSeries = stored;
+      } catch (e) { /* storage unavailable; use default */ }
+      mainSelect.value = savedSeries;
+
+      const mainChart = new Chart(document.getElementById('main-chart'), {
         type: 'line',
-        data: { datasets: mainDatasets },
-        options: baseOptions('Median EUR/m2')
+        data: { datasets: buildMainDatasets(savedSeries) },
+        options: baseOptions('EUR/m2')
+      });
+      mainSelect.addEventListener('change', function (e) {
+        mainChart.data.datasets = buildMainDatasets(e.target.value);
+        mainChart.update();
+        try { localStorage.setItem(MAIN_SERIES_KEY, e.target.value); }
+        catch (err) { /* storage unavailable; ignore */ }
       });
 
       // Per-district tiles: raw + 5-day and 20-day moving averages.
@@ -207,9 +255,9 @@ export function renderTrends(trends: Trends): string {
           type: 'line',
           data: {
             datasets: [
-              { label: 'Raw (median)', data: points(s, 'median'), borderColor: '#3b82f6', backgroundColor: '#3b82f6', spanGaps: true, tension: 0.2 },
-              { label: 'MA 5d', data: points(s, 'ma5'), borderColor: '#f59e0b', backgroundColor: '#f59e0b', spanGaps: true, borderDash: [6, 3], tension: 0.2 },
-              { label: 'MA 20d', data: points(s, 'ma20'), borderColor: '#10b981', backgroundColor: '#10b981', spanGaps: true, borderDash: [2, 2], tension: 0.2 }
+              { label: 'Raw (median)', data: points(s, 'median'), borderColor: '#3b82f6', backgroundColor: '#3b82f6', borderWidth: BASE_WIDTH, spanGaps: true, tension: 0.2 },
+              { label: 'MA 5d', data: points(s, 'ma5'), borderColor: '#f59e0b', backgroundColor: '#f59e0b', borderWidth: BASE_WIDTH, spanGaps: true, borderDash: [6, 3], tension: 0.2 },
+              { label: 'MA 20d', data: points(s, 'ma20'), borderColor: '#10b981', backgroundColor: '#10b981', borderWidth: BASE_WIDTH, spanGaps: true, borderDash: [2, 2], tension: 0.2 }
             ]
           },
           options: baseOptions('EUR/m2')
