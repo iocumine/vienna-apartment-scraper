@@ -1,5 +1,5 @@
 import { escapeHtml, eur } from '../alerts/format.js';
-import type { Summary, Trends, MapPoint } from './data.js';
+import type { Summary, Trends, MapPoint, ListingsRow } from './data.js';
 
 function layout(title: string, nav: string, body: string): string {
   return `<!doctype html>
@@ -18,9 +18,16 @@ function layout(title: string, nav: string, body: string): string {
     table { border-collapse: collapse; width: 100%; margin: 12px 0; }
     th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 14px; }
     th { background: #f3f4f6; }
-    table.sortable th { cursor: pointer; user-select: none; white-space: nowrap; }
-    table.sortable th:hover { background: #e5e7eb; }
+    table.sortable thead tr:first-child th { cursor: pointer; user-select: none; white-space: nowrap; }
+    table.sortable thead tr:first-child th:hover { background: #e5e7eb; }
     table.sortable th .arrow { color: #2563eb; font-size: 12px; }
+    tr.filters th { background: #fff; font-weight: 400; cursor: auto; vertical-align: top; }
+    tr.filters input, tr.filters select { width: 100%; box-sizing: border-box; font-size: 13px; padding: 5px; border: 1px solid #d1d5db; border-radius: 6px; }
+    .cmp { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    tr.filters .cmp select { flex: 0 0 48px; width: 48px; padding: 5px 2px; }
+    tr.filters .cmp input { flex: 1 1 64px; width: auto; min-width: 64px; }
+    a.card-link { text-decoration: none; color: inherit; cursor: pointer; }
+    a.card-link:hover { background: #eef2ff; border-color: #c7d2fe; }
     .cards { display: flex; gap: 16px; flex-wrap: wrap; }
     .card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; min-width: 140px; }
     .card .n { font-size: 28px; font-weight: 700; }
@@ -60,19 +67,90 @@ const NAV = `
   <a href="/trends">Price trends</a>
   <a href="/map">Map</a>`;
 
-export function renderOverview(summary: Summary): string {
-  const rows = summary.newListings
-    .map(
-      (l) => `<tr>
+interface ListingLikeRow {
+  url?: string | null;
+  title?: string | null;
+  district?: number | null;
+  rooms?: number | null;
+  area_m2?: number | null;
+  price?: number | null;
+  price_per_m2?: number | null;
+}
+
+// Sortable column headers shared by the overview and listings tables. Each cell
+// declares its sort type and carries a span where the sort arrow is rendered.
+const LISTING_HEADERS = `<tr>
+      <th data-type="text">Title<span class="arrow"></span></th>
+      <th data-type="num">District<span class="arrow"></span></th>
+      <th data-type="num">Rooms<span class="arrow"></span></th>
+      <th data-type="num">m&sup2;<span class="arrow"></span></th>
+      <th data-type="num">Price<span class="arrow"></span></th>
+      <th data-type="num">EUR/m&sup2;<span class="arrow"></span></th>
+    </tr>`;
+
+function listingRowHtml(l: ListingLikeRow): string {
+  return `<tr>
       <td><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.title ?? 'Untitled')}</a></td>
       <td data-sort-value="${l.district ?? ''}">${l.district ?? '?'}</td>
       <td data-sort-value="${l.rooms ?? ''}">${l.rooms ?? '?'}</td>
       <td data-sort-value="${l.area_m2 ?? ''}">${l.area_m2 ?? '?'}</td>
       <td data-sort-value="${l.price ?? ''}">${escapeHtml(eur(l.price))}</td>
       <td data-sort-value="${l.price_per_m2 ?? ''}">${escapeHtml(eur(l.price_per_m2))}</td>
-    </tr>`,
-    )
-    .join('');
+    </tr>`;
+}
+
+// Client script that makes every table.sortable clickable-to-sort (asc/desc per
+// column, empty values last). Shared by the overview and listings pages.
+function sortableScript(): string {
+  return `<script>
+      (function () {
+        function cellValue(td, type) {
+          if (!td) return null;
+          const raw = td.getAttribute('data-sort-value');
+          const s = (raw !== null ? raw : td.textContent).trim();
+          if (s === '') return null;
+          if (type === 'num') { const n = Number(s); return Number.isFinite(n) ? n : null; }
+          return s.toLowerCase();
+        }
+        document.querySelectorAll('table.sortable').forEach(function (table) {
+          if (!table.tHead) return;
+          const ths = table.tHead.rows[0].cells;
+          let sortCol = -1, sortDir = 1; // 1 asc, -1 desc
+          function updateArrows() {
+            for (let i = 0; i < ths.length; i++) {
+              const a = ths[i].querySelector('.arrow');
+              if (a) a.textContent = (i === sortCol) ? (sortDir === 1 ? ' \u25b2' : ' \u25bc') : '';
+            }
+          }
+          function sortBy(col) {
+            const type = ths[col].getAttribute('data-type') || 'text';
+            sortDir = (sortCol === col) ? -sortDir : 1;
+            sortCol = col;
+            const tbody = table.tBodies[0];
+            const rows = Array.prototype.slice.call(tbody.rows).filter(function (r) { return r.cells.length === ths.length; });
+            if (rows.length === 0) { updateArrows(); return; }
+            rows.sort(function (a, b) {
+              const av = cellValue(a.cells[col], type), bv = cellValue(b.cells[col], type);
+              if (av === null && bv === null) return 0;
+              if (av === null) return 1;
+              if (bv === null) return -1;
+              if (av < bv) return -sortDir;
+              if (av > bv) return sortDir;
+              return 0;
+            });
+            rows.forEach(function (r) { tbody.appendChild(r); });
+            updateArrows();
+          }
+          for (let c = 0; c < ths.length; c++) {
+            (function (col) { ths[col].addEventListener('click', function () { sortBy(col); }); })(c);
+          }
+        });
+      })();
+    </script>`;
+}
+
+export function renderOverview(summary: Summary): string {
+  const rows = summary.newListings.map(listingRowHtml).join('');
   const districtRows = summary.districts
     .map(
       (d) => `<tr><td>${d.district}</td><td>${escapeHtml(eur(d.median_price_per_m2))}</td>
@@ -82,7 +160,7 @@ export function renderOverview(summary: Summary): string {
   const body = `
     <h1>Overview</h1>
     <div class="cards">
-      <div class="card"><div class="n">${summary.activeCount}</div>active listings</div>
+      <a class="card card-link" href="/listings" title="View all active listings"><div class="n">${summary.activeCount}</div>active listings</a>
       <div class="card"><div class="n">${summary.newCount}</div>new in last 24h</div>
       <div class="card"><div class="n">${summary.districts.length}</div>districts tracked</div>
     </div>
@@ -90,66 +168,99 @@ export function renderOverview(summary: Summary): string {
     <table><thead><tr><th>District</th><th>Median EUR/m&sup2;</th><th>Avg EUR/m&sup2;</th><th>Active</th></tr></thead>
     <tbody>${districtRows || '<tr><td colspan="4">No data yet</td></tr>'}</tbody></table>
     <h2>New listings (last 24h)</h2>
-    <table id="listings" class="sortable"><thead><tr>
-      <th data-type="text">Title<span class="arrow"></span></th>
-      <th data-type="num">District<span class="arrow"></span></th>
-      <th data-type="num">Rooms<span class="arrow"></span></th>
-      <th data-type="num">m&sup2;<span class="arrow"></span></th>
-      <th data-type="num">Price<span class="arrow"></span></th>
-      <th data-type="num">EUR/m&sup2;<span class="arrow"></span></th>
-    </tr></thead>
+    <table id="listings" class="sortable"><thead>${LISTING_HEADERS}</thead>
     <tbody>${rows || '<tr><td colspan="6">Nothing new</td></tr>'}</tbody></table>
+    ${sortableScript()}`;
+  return layout('Vienna Apartments - Overview', NAV, body);
+}
+
+export function renderListings(listings: ListingsRow[]): string {
+  const districts = [...new Set(listings.map((l) => l.district).filter((d): d is number => d != null))].sort(
+    (a, b) => a - b,
+  );
+  const roomCounts = [...new Set(listings.map((l) => l.rooms).filter((r): r is number => r != null))].sort(
+    (a, b) => a - b,
+  );
+  const districtOptions = districts.map((d) => `<option value="${d}">${d}</option>`).join('');
+  const roomOptions = roomCounts.map((r) => `<option value="${r}">${r}</option>`).join('');
+  const cmp = (idPrefix: string, placeholder: string): string =>
+    `<span class="cmp">
+        <select id="${idPrefix}-op"><option value="gt">&gt;</option><option value="lt">&lt;</option></select>
+        <input type="number" id="${idPrefix}-val" placeholder="${placeholder}" />
+      </span>`;
+  const rows = listings.map(listingRowHtml).join('');
+  const body = `
+    <h1>Active listings</h1>
+    <p id="count"></p>
+    <table id="active-listings" class="sortable">
+      <thead>
+    ${LISTING_HEADERS}
+        <tr class="filters">
+          <th><input type="text" id="f-title" placeholder="contains&hellip;" aria-label="Filter by title" /></th>
+          <th><select id="f-district" aria-label="Filter by district"><option value="">All</option>${districtOptions}</select></th>
+          <th><select id="f-rooms" aria-label="Filter by rooms"><option value="">All</option>${roomOptions}</select></th>
+          <th>${cmp('f-area', 'm²')}</th>
+          <th>${cmp('f-price', 'EUR')}</th>
+          <th>${cmp('f-ppm2', 'EUR/m²')}</th>
+        </tr>
+      </thead>
+      <tbody>${rows || '<tr><td colspan="6">No active listings</td></tr>'}</tbody>
+    </table>
+    ${sortableScript()}
     <script>
       (function () {
-        const table = document.getElementById('listings');
-        if (!table || !table.tHead) return;
-        const ths = table.tHead.rows[0].cells;
-        let sortCol = -1, sortDir = 1; // 1 asc, -1 desc
+        const table = document.getElementById('active-listings');
+        const tbody = table.tBodies[0];
+        const countEl = document.getElementById('count');
+        const COLS = 6;
+        const f = {};
+        ['f-title','f-district','f-rooms','f-area-op','f-area-val','f-price-op','f-price-val','f-ppm2-op','f-ppm2-val']
+          .forEach(function (id) { f[id] = document.getElementById(id); });
 
-        function cellValue(td, type) {
-          if (!td) return null;
-          const raw = td.getAttribute('data-sort-value');
-          const s = (raw !== null ? raw : td.textContent).trim();
-          if (s === '') return null;
-          if (type === 'num') { const n = Number(s); return Number.isFinite(n) ? n : null; }
-          return s.toLowerCase();
+        function numAt(row, col) {
+          const v = row.cells[col].getAttribute('data-sort-value');
+          if (v === null || v.trim() === '') return null;
+          const n = Number(v);
+          return Number.isFinite(n) ? n : null;
         }
-
-        function updateArrows() {
-          for (let i = 0; i < ths.length; i++) {
-            const a = ths[i].querySelector('.arrow');
-            if (a) a.textContent = (i === sortCol) ? (sortDir === 1 ? ' \u25b2' : ' \u25bc') : '';
-          }
+        function cmpOk(value, op, threshold) {
+          if (threshold === '' || threshold == null) return true; // filter inactive
+          const t = Number(threshold);
+          if (!Number.isFinite(t)) return true;
+          if (value === null) return false; // missing data can't satisfy a numeric filter
+          return op === 'lt' ? value < t : value > t;
         }
-
-        function sortBy(col) {
-          const type = ths[col].getAttribute('data-type') || 'text';
-          sortDir = (sortCol === col) ? -sortDir : 1;
-          sortCol = col;
-          const tbody = table.tBodies[0];
-          const rows = Array.prototype.slice.call(tbody.rows).filter(function (r) { return r.cells.length === ths.length; });
-          if (rows.length === 0) { updateArrows(); return; }
-          rows.sort(function (a, b) {
-            const av = cellValue(a.cells[col], type), bv = cellValue(b.cells[col], type);
-            if (av === null && bv === null) return 0;
-            if (av === null) return 1;   // empty values always sort last
-            if (bv === null) return -1;
-            if (av < bv) return -sortDir;
-            if (av > bv) return sortDir;
-            return 0;
+        function matches(row) {
+          if (row.cells.length !== COLS) return false;
+          const title = f['f-title'].value.trim().toLowerCase();
+          if (title && row.cells[0].textContent.toLowerCase().indexOf(title) === -1) return false;
+          if (f['f-district'].value && row.cells[1].getAttribute('data-sort-value') !== f['f-district'].value) return false;
+          if (f['f-rooms'].value && row.cells[2].getAttribute('data-sort-value') !== f['f-rooms'].value) return false;
+          if (!cmpOk(numAt(row, 3), f['f-area-op'].value, f['f-area-val'].value)) return false;
+          if (!cmpOk(numAt(row, 4), f['f-price-op'].value, f['f-price-val'].value)) return false;
+          if (!cmpOk(numAt(row, 5), f['f-ppm2-op'].value, f['f-ppm2-val'].value)) return false;
+          return true;
+        }
+        function apply() {
+          let shown = 0, total = 0;
+          Array.prototype.slice.call(tbody.rows).forEach(function (row) {
+            if (row.cells.length !== COLS) return; // placeholder row
+            total++;
+            const ok = matches(row);
+            row.style.display = ok ? '' : 'none';
+            if (ok) shown++;
           });
-          rows.forEach(function (r) { tbody.appendChild(r); });
-          updateArrows();
+          countEl.textContent = 'Showing ' + shown + ' of ' + total + ' active listings';
         }
-
-        for (let c = 0; c < ths.length; c++) {
-          (function (col) {
-            ths[col].addEventListener('click', function () { sortBy(col); });
-          })(c);
-        }
+        Object.keys(f).forEach(function (id) {
+          if (!f[id]) return;
+          f[id].addEventListener('input', apply);
+          f[id].addEventListener('change', apply);
+        });
+        apply();
       })();
     </script>`;
-  return layout('Vienna Apartments - Overview', NAV, body);
+  return layout('Vienna Apartments - Active listings', NAV, body);
 }
 
 export function renderTrends(trends: Trends): string {

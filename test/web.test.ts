@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import Database from 'better-sqlite3';
 import { createRepository, type Repository } from '../src/db/index.js';
-import { buildSummary, buildTrends, buildMapData } from '../src/web/data.js';
-import { renderOverview, renderTrends, renderMap } from '../src/web/views.js';
+import { buildSummary, buildTrends, buildMapData, buildActiveListings } from '../src/web/data.js';
+import { renderOverview, renderTrends, renderMap, renderListings } from '../src/web/views.js';
 import type { AppConfig, NormalizedListing } from '../src/types.js';
 
 function repoAt(now: string): Repository {
@@ -60,6 +60,33 @@ describe('buildTrends', () => {
   });
 });
 
+describe('buildActiveListings', () => {
+  it('returns only active listings, mapped and sorted by district then price', () => {
+    const clock = { now: '2026-06-01T12:00:00.000Z' };
+    const repo = createRepository(new Database(':memory:'), { clock: () => clock.now });
+    repo.upsertListing(listing({ id: 'old', district: 7, price: 1000, area_m2: 50 }));
+    // Deactivate the old one by advancing the clock past its last_seen_at.
+    clock.now = '2026-06-02T12:00:00.000Z';
+    repo.deactivateNotSeenSince('2026-06-02T00:00:00.000Z');
+    repo.upsertListing(listing({ id: 'b9', district: 9, price: 2000, area_m2: 50 }));
+    repo.upsertListing(listing({ id: 'a7hi', district: 7, price: 1500, area_m2: 50 }));
+    repo.upsertListing(listing({ id: 'a7lo', district: 7, price: 900, area_m2: 50 }));
+    // A listing with null district/rooms/price sorts last and maps to nulls.
+    repo.upsertListing(listing({ id: 'nulls', district: null, rooms: null, area_m2: null, price: null, price_per_m2: null }));
+
+    const active = buildActiveListings(repo);
+    expect(active.map((l) => l.id)).toEqual(['a7lo', 'a7hi', 'b9', 'nulls']); // 'old' excluded, nulls last
+    expect(active[0]).toMatchObject({ district: 7, price: 900, area_m2: 50 });
+    expect(active[3]).toMatchObject({ id: 'nulls', district: null, rooms: null, price: null });
+
+    // Rendering must drop null district/rooms from the filter dropdowns.
+    const html = renderListings(active);
+    expect(html).toContain('<option value="7">7</option>');
+    expect(html).toContain('<option value="9">9</option>');
+    expect(html).toContain('Showing'); // count placeholder text wired in
+  });
+});
+
 describe('buildMapData', () => {
   it('tags listings as below/above district median and skips ungeocoded', () => {
     const repo = repoAt('2026-06-06T12:00:00.000Z');
@@ -91,6 +118,23 @@ describe('views render valid html', () => {
     expect(overview).toContain('data-type="num"');
     expect(overview).toContain('data-sort-value=');
     expect(overview).toContain('function sortBy');
+    // The active-listings tile links to the standalone listings page.
+    expect(overview).toContain('href="/listings"');
+
+    const allListings = renderListings(buildActiveListings(repo));
+    expect(allListings).toContain('Active listings');
+    expect(allListings).toContain('id="active-listings"');
+    expect(allListings).toContain('class="sortable"');
+    // Per-column filters: title text, district/rooms selects, numeric comparators.
+    expect(allListings).toContain('id="f-title"');
+    expect(allListings).toContain('id="f-district"');
+    expect(allListings).toContain('id="f-rooms"');
+    expect(allListings).toContain('id="f-price-op"');
+    expect(allListings).toContain('id="f-price-val"');
+    expect(allListings).toContain('id="f-ppm2-op"');
+    expect(allListings).toContain('id="f-area-op"');
+    expect(allListings).toContain('<option value="7">7</option>'); // district option
+    expect(allListings).toContain('function matches');
 
     const trends = renderTrends(buildTrends(repo));
     expect(trends).toContain('chart.js');
@@ -128,5 +172,6 @@ describe('views render valid html', () => {
     const overview = renderOverview(buildSummary(repo, config, () => '2026-06-06T12:00:00.000Z'));
     expect(overview).toContain('No data yet');
     expect(renderTrends(buildTrends(repo))).toContain('No daily stats recorded yet');
+    expect(renderListings(buildActiveListings(repo))).toContain('No active listings');
   });
 });

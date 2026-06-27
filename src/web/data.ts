@@ -79,6 +79,39 @@ export function buildTrends(repo: Repository): Trends {
   return { dates, series };
 }
 
+export interface ListingsRow {
+  id: string;
+  title: string | null;
+  url: string | null;
+  district: number | null;
+  rooms: number | null;
+  area_m2: number | null;
+  price: number | null;
+  price_per_m2: number | null;
+}
+
+// All currently-active listings for the standalone listings page, sorted by
+// district then price as a sensible default before client-side sort/filter.
+export function buildActiveListings(repo: Repository): ListingsRow[] {
+  return repo
+    .getActiveListings()
+    .map((l) => ({
+      id: String(l.id),
+      title: l.title ?? null,
+      url: l.url ?? null,
+      district: l.district ?? null,
+      rooms: l.rooms ?? null,
+      area_m2: l.area_m2 ?? null,
+      price: l.price ?? null,
+      price_per_m2: l.price_per_m2 ?? null,
+    }))
+    .sort(
+      (a, b) =>
+        (a.district ?? Infinity) - (b.district ?? Infinity) ||
+        (a.price ?? Infinity) - (b.price ?? Infinity),
+    );
+}
+
 export interface MapPoint {
   id: string;
   title: string | null;
