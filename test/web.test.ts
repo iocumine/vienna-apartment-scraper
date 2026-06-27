@@ -1,8 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createRepository, type Repository } from '../src/db/index.js';
 import { buildSummary, buildTrends, buildMapData, buildActiveListings, buildNewListings } from '../src/web/data.js';
 import { renderOverview, renderTrends, renderMap, renderListings, renderNewListings } from '../src/web/views.js';
+import { resetWillhabenAccessStatus, recordWillhabenForbidden } from '../src/lib/willhabenStatus.js';
 import type { AppConfig, NormalizedListing } from '../src/types.js';
 
 function repoAt(now: string): Repository {
@@ -20,6 +21,8 @@ function listing(over: Partial<NormalizedListing> = {}): NormalizedListing {
 const config = {} as AppConfig;
 
 describe('buildSummary', () => {
+  beforeEach(() => resetWillhabenAccessStatus());
+
   it('counts active and last-24h listings plus period district stats', () => {
     const repo = repoAt('2026-06-06T12:00:00.000Z');
     repo.upsertListing(listing({ id: 'a1', district: 7, price: 1000, area_m2: 50 }));
@@ -32,6 +35,17 @@ describe('buildSummary', () => {
     expect(summary.districts.map((d) => d.district)).toEqual([7, 9]);
     expect(summary.districts[0]).toMatchObject({ district: 7, median_price_per_m2: 20, active_count: 1 });
     expect(summary.districts[1]).toMatchObject({ district: 9, median_price_per_m2: 30, active_count: 1 });
+    expect(summary.willhabenAccess.forbidden).toBe(false);
+  });
+
+  it('includes willhaben 403 status in the summary payload', () => {
+    recordWillhabenForbidden('willhaben request failed: 403 Forbidden', '2026-06-06T12:00:00.000Z');
+    const summary = buildSummary(repoAt('2026-06-06T12:00:00.000Z'), config);
+    expect(summary.willhabenAccess).toMatchObject({
+      forbidden: true,
+      lastForbiddenAt: '2026-06-06T12:00:00.000Z',
+      lastMessage: 'willhaben request failed: 403 Forbidden',
+    });
   });
 });
 
@@ -83,11 +97,24 @@ describe('buildActiveListings', () => {
     expect(active[0]).toMatchObject({ district: 7, price: 900, area_m2: 50 });
     expect(active[3]).toMatchObject({ id: 'nulls', district: null, rooms: null, price: null });
 
-    // Rendering must drop null district/rooms from the filter dropdowns.
     const html = renderListings(active);
     expect(html).toContain('<option value="7">7</option>');
     expect(html).toContain('<option value="9">9</option>');
-    expect(html).toContain('Showing'); // count placeholder text wired in
+    expect(html).toContain('Showing');
+  });
+
+  it('marks listings with miss_count as pending verification on the active page', () => {
+    const repo = repoAt('2026-06-06T12:00:00.000Z');
+    repo.upsertListing(listing({ id: 'ok', district: 7 }));
+    repo.upsertListing(listing({ id: 'pending', district: 7 }));
+    repo.db.prepare('UPDATE listings SET miss_count = 2 WHERE id = ?').run('pending');
+
+    const active = buildActiveListings(repo);
+    expect(active.find((l) => l.id === 'pending')!.pendingVerification).toBe(true);
+    expect(active.find((l) => l.id === 'ok')!.pendingVerification).toBe(false);
+
+    const html = renderListings(active);
+    expect(html).toContain('pending verification');
   });
 });
 
@@ -122,6 +149,8 @@ describe('buildMapData', () => {
 });
 
 describe('views render valid html', () => {
+  beforeEach(() => resetWillhabenAccessStatus());
+
   it('renders overview, trends, and map', () => {
     const repo = repoAt('2026-06-06T12:00:00.000Z');
     repo.upsertListing(listing({ id: 'a1', district: 7, price: 1000, area_m2: 50, lat: 48.2, lng: 16.3 }));
@@ -242,5 +271,25 @@ describe('views render valid html', () => {
     expect(renderNewListings(buildNewListings(repo, () => '2026-06-06T12:00:00.000Z'))).toContain(
       'No new listings',
     );
+  });
+
+  it('shows a site-wide banner when willhaben returns HTTP 403', () => {
+    const forbidden = {
+      forbidden: true,
+      lastForbiddenAt: '2026-06-06T12:00:00.000Z',
+      lastSuccessAt: null,
+      lastMessage: 'willhaben request failed: 403 Forbidden',
+    };
+    const overview = renderOverview({
+      ...buildSummary(repoAt('2026-06-06T12:00:00.000Z'), config),
+      willhabenAccess: forbidden,
+    });
+    expect(overview).toContain('alert-forbidden');
+    expect(overview).toContain('HTTP 403');
+    expect(overview).toContain('willhaben request failed: 403 Forbidden');
+
+    expect(renderListings([], null, forbidden)).toContain('alert-forbidden');
+    expect(renderTrends({ dates: [], series: [] }, forbidden)).toContain('alert-forbidden');
+    expect(renderMap([], forbidden)).toContain('alert-forbidden');
   });
 });

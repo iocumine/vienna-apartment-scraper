@@ -74,6 +74,8 @@ describe('loadConfig', () => {
     expect(cfg.alertThresholdPct).toBeCloseTo(0.15);
     expect(cfg.port).toBe(3000);
     expect(cfg.smtp.host).toBe('smtp.gmail.com');
+    expect(cfg.verificationMissThreshold).toBe(5);
+    expect(cfg.willhabenRequestsPerMinute).toBe(50);
   });
 
   it('reads overrides from env', () => {

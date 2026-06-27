@@ -1,4 +1,9 @@
-import { districtForPostcode } from '../config.js';
+import { districtForPostcode, postcodeForDistrict } from '../config.js';
+import type { RateLimiter } from '../lib/rateLimit.js';
+import {
+  recordWillhabenForbidden,
+  recordWillhabenSuccess,
+} from '../lib/willhabenStatus.js';
 import { pricePerM2 } from '../lib/metrics.js';
 import type { AppConfig, Logger, NormalizedListing, TransactionType } from '../types.js';
 
@@ -19,6 +24,8 @@ export interface SearchUrlParams {
   rows?: number;
   roomsMin?: number;
   roomsMax?: number;
+  areaId?: number;
+  keyword?: string;
 }
 
 export function buildSearchUrl({
@@ -27,16 +34,26 @@ export function buildSearchUrl({
   rows = 90,
   roomsMin,
   roomsMax,
+  areaId = VIENNA_AREA_ID,
+  keyword,
 }: SearchUrlParams = {}): string {
   const path = SEARCH_PATHS[transactionType] ?? SEARCH_PATHS.rent;
   const params = new URLSearchParams();
-  params.set('areaId', String(VIENNA_AREA_ID));
+  params.set('areaId', String(areaId));
   params.set('rows', String(rows));
   params.set('page', String(page));
   params.set('sort', '1'); // newest first
   if (Number.isFinite(roomsMin)) params.set('NO_OF_ROOMS_BUCKET_FROM', String(roomsMin));
   if (Number.isFinite(roomsMax)) params.set('NO_OF_ROOMS_BUCKET_TO', String(roomsMax));
+  if (keyword) params.set('keyword', keyword);
   return `${BASE_URL}${path}?${params.toString()}`;
+}
+
+export function buildKeywordSearchUrl(
+  id: string,
+  transactionType: TransactionType = 'rent',
+): string {
+  return buildSearchUrl({ transactionType, keyword: String(id), rows: 30, page: 1 });
 }
 
 // willhaben stores numbers in mixed formats: "1.234,56" (EU), "1234.56", "50".
@@ -221,14 +238,19 @@ type FetchLike = (url: string, init?: unknown) => Promise<{
 export interface ScrapeDeps {
   fetchImpl?: FetchLike;
   sleep?: (ms: number) => Promise<void>;
+  rateLimiter?: RateLimiter;
   logger?: Logger;
 }
 
 // Fetch + parse a single search page into normalized (unfiltered) listings.
 export async function fetchPage(
   url: string,
-  { fetchImpl = fetch as unknown as FetchLike }: { fetchImpl?: FetchLike } = {},
+  {
+    fetchImpl = fetch as unknown as FetchLike,
+    rateLimiter,
+  }: { fetchImpl?: FetchLike; rateLimiter?: RateLimiter } = {},
 ): Promise<NormalizedListing[]> {
+  await rateLimiter?.acquire();
   const res = await fetchImpl(url, {
     headers: {
       'User-Agent':
@@ -238,8 +260,11 @@ export async function fetchPage(
     },
   });
   if (!res.ok) {
-    throw new Error(`willhaben request failed: ${res.status} ${res.statusText ?? ''}`.trim());
+    const message = `willhaben request failed: ${res.status} ${res.statusText ?? ''}`.trim();
+    if (res.status === 403) recordWillhabenForbidden(message);
+    throw new Error(message);
   }
+  recordWillhabenSuccess();
   const body = await res.text();
   const data = extractNextData(body) ?? safeJson(body);
   const adverts = extractAdvertSummaries(data);
@@ -254,30 +279,43 @@ function safeJson(body: string): unknown {
   }
 }
 
-// Scrape Vienna-wide across pages, dedupe by id, and filter to the wanted districts/rooms.
+// Scrape each configured district (by postcode areaId) across pages, dedupe, and filter.
 export async function scrape(
   config: AppConfig,
-  { fetchImpl = fetch as unknown as FetchLike, sleep = defaultSleep, logger = console }: ScrapeDeps = {},
+  deps: ScrapeDeps = {},
 ): Promise<NormalizedListing[]> {
+  const {
+    fetchImpl = fetch as unknown as FetchLike,
+    sleep = defaultSleep,
+    logger = console,
+  } = deps;
   const maxPages = config.maxPagesPerDistrict ?? 5;
   const seen = new Map<string, NormalizedListing>();
-  for (let page = 1; page <= maxPages; page += 1) {
-    const url = buildSearchUrl({
-      transactionType: config.transactionType,
-      page,
-      roomsMin: config.roomsMin,
-      roomsMax: config.roomsMax,
-    });
-    let pageListings: NormalizedListing[];
-    try {
-      pageListings = await fetchPage(url, { fetchImpl });
-    } catch (err) {
-      logger.warn?.(`scrape page ${page} failed: ${(err as Error).message}`);
-      break;
+  for (const district of config.districts) {
+    const areaId = postcodeForDistrict(district);
+    if (areaId === null) {
+      logger.warn?.(`scrape: unknown district ${district}, skipping`);
+      continue;
     }
-    if (pageListings.length === 0) break;
-    for (const l of pageListings) seen.set(l.id, l);
-    if (page < maxPages) await sleep(config.requestDelayMs ?? 1500);
+    for (let page = 1; page <= maxPages; page += 1) {
+      const url = buildSearchUrl({
+        transactionType: config.transactionType,
+        areaId,
+        page,
+        roomsMin: config.roomsMin,
+        roomsMax: config.roomsMax,
+      });
+      let pageListings: NormalizedListing[];
+      try {
+        pageListings = await fetchPage(url, { fetchImpl, rateLimiter: deps.rateLimiter });
+      } catch (err) {
+        logger.warn?.(`scrape district ${district} page ${page} failed: ${(err as Error).message}`);
+        break;
+      }
+      if (pageListings.length === 0) break;
+      for (const l of pageListings) seen.set(l.id, l);
+      if (page < maxPages) await sleep(config.requestDelayMs ?? 1500);
+    }
   }
   return filterListings([...seen.values()], {
     districts: config.districts,

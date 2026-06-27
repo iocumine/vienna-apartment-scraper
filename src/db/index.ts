@@ -15,6 +15,10 @@ const SCHEMA_PATH = fs.existsSync(path.join(__dirname, 'schema.sql'))
 export function migrate(db: DB): DB {
   const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
   db.exec(schema);
+  const cols = db.prepare('PRAGMA table_info(listings)').all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === 'miss_count')) {
+    db.exec('ALTER TABLE listings ADD COLUMN miss_count INTEGER NOT NULL DEFAULT 0');
+  }
   return db;
 }
 
@@ -40,14 +44,14 @@ export function createRepository(db: DB, { clock = nowIso }: RepositoryOptions =
   migrate(db);
 
   const insertStmt = db.prepare(`
-    INSERT INTO listings (id, first_seen_at, last_seen_at, is_active, title, url,
+    INSERT INTO listings (id, first_seen_at, last_seen_at, is_active, miss_count, title, url,
       district, postcode, rooms, area_m2, price, price_per_m2, lat, lng, published_at, raw_json)
-    VALUES (@id, @ts, @ts, 1, @title, @url, @district, @postcode, @rooms, @area_m2,
+    VALUES (@id, @ts, @ts, 1, 0, @title, @url, @district, @postcode, @rooms, @area_m2,
       @price, @price_per_m2, @lat, @lng, @published_at, @raw_json)
   `);
 
   const updateStmt = db.prepare(`
-    UPDATE listings SET last_seen_at = @ts, is_active = 1, title = @title, url = @url,
+    UPDATE listings SET last_seen_at = @ts, is_active = 1, miss_count = 0, title = @title, url = @url,
       district = @district, postcode = @postcode, rooms = @rooms, area_m2 = @area_m2,
       price = @price, price_per_m2 = @price_per_m2, lat = @lat, lng = @lng,
       published_at = @published_at, raw_json = @raw_json
@@ -95,6 +99,34 @@ export function createRepository(db: DB, { clock = nowIso }: RepositoryOptions =
       .prepare('UPDATE listings SET is_active = 0 WHERE last_seen_at < ? AND is_active = 1')
       .run(sinceIso);
     return info.changes;
+  }
+
+  function incrementMissCountForNotSeenSince(sinceIso: string): number {
+    const info = db
+      .prepare(
+        `UPDATE listings SET miss_count = miss_count + 1
+         WHERE is_active = 1 AND last_seen_at < ?`,
+      )
+      .run(sinceIso);
+    return info.changes;
+  }
+
+  function getListingsForVerification(missThreshold: number, maxLastSeenAt: string): ListingRow[] {
+    return db
+      .prepare(
+        `SELECT * FROM listings
+         WHERE is_active = 1 AND miss_count >= ? AND last_seen_at <= ?
+         ORDER BY last_seen_at ASC`,
+      )
+      .all(missThreshold, maxLastSeenAt) as ListingRow[];
+  }
+
+  function resetMissCount(id: string): void {
+    db.prepare('UPDATE listings SET miss_count = 0 WHERE id = ?').run(String(id));
+  }
+
+  function deactivateListing(id: string): void {
+    db.prepare('UPDATE listings SET is_active = 0 WHERE id = ?').run(String(id));
   }
 
   function getActiveListings(): ListingRow[] {
@@ -282,6 +314,10 @@ export function createRepository(db: DB, { clock = nowIso }: RepositoryOptions =
     upsertListing,
     upsertMany,
     deactivateNotSeenSince,
+    incrementMissCountForNotSeenSince,
+    getListingsForVerification,
+    resetMissCount,
+    deactivateListing,
     getActiveListings,
     getListingById,
     getNewListingsSince,

@@ -62,6 +62,60 @@ describe('repository: upsert + dedup', () => {
     const res2 = repo.upsertMany([listing({ id: 'a1' }), listing({ id: 'a3' })]);
     expect(res2.map((r) => r.isNew)).toEqual([false, true]);
   });
+
+  it('resets miss_count when a listing is seen again', () => {
+    repo.upsertListing(listing());
+    repo.db.prepare('UPDATE listings SET miss_count = 3 WHERE id = ?').run('a1');
+    now = '2026-06-02T12:00:00.000Z';
+    repo.upsertListing(listing({ price: 1100 }));
+    expect(repo.getListingById('a1')!.miss_count).toBe(0);
+  });
+});
+
+describe('repository: miss tracking + verification', () => {
+  it('increments miss_count for active listings not seen since run start', () => {
+    let now = '2026-06-01T12:00:00.000Z';
+    const repo = createRepository(new Database(':memory:'), { clock: () => now });
+    repo.upsertListing(listing({ id: 'a1' }));
+    repo.upsertListing(listing({ id: 'a2' }));
+
+    const runStart = '2026-06-02T12:00:00.000Z';
+    now = '2026-06-02T12:00:01.000Z';
+    repo.upsertListing(listing({ id: 'a1' }));
+    const changed = repo.incrementMissCountForNotSeenSince(runStart);
+    expect(changed).toBe(1);
+    expect(repo.getListingById('a1')!.miss_count).toBe(0);
+    expect(repo.getListingById('a2')!.miss_count).toBe(1);
+  });
+
+  it('returns verification candidates by miss threshold and last seen age', () => {
+    const repo = makeRepo(() => '2026-06-10T12:00:00.000Z');
+    repo.upsertListing(listing({ id: 'ready' }));
+    repo.upsertListing(listing({ id: 'young' }));
+    repo.upsertListing(listing({ id: 'few-misses' }));
+    repo.db.prepare(`UPDATE listings SET last_seen_at = ?, miss_count = 5 WHERE id = 'ready'`).run(
+      '2026-06-09T00:00:00.000Z',
+    );
+    repo.db.prepare(`UPDATE listings SET last_seen_at = ?, miss_count = 5 WHERE id = 'young'`).run(
+      '2026-06-10T10:00:00.000Z',
+    );
+    repo.db.prepare(`UPDATE listings SET last_seen_at = ?, miss_count = 2 WHERE id = 'few-misses'`).run(
+      '2026-06-09T00:00:00.000Z',
+    );
+
+    const candidates = repo.getListingsForVerification(5, '2026-06-09T23:59:59.000Z');
+    expect(candidates.map((r) => r.id)).toEqual(['ready']);
+  });
+
+  it('deactivates a single listing and resets miss count independently', () => {
+    const repo = makeRepo(() => '2026-06-01T12:00:00.000Z');
+    repo.upsertListing(listing({ id: 'a1' }));
+    repo.db.prepare('UPDATE listings SET miss_count = 4 WHERE id = ?').run('a1');
+    repo.resetMissCount('a1');
+    expect(repo.getListingById('a1')!.miss_count).toBe(0);
+    repo.deactivateListing('a1');
+    expect(repo.getListingById('a1')!.is_active).toBe(0);
+  });
 });
 
 describe('repository: deactivation', () => {

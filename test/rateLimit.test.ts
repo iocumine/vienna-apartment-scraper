@@ -1,0 +1,47 @@
+import { describe, it, expect, vi } from 'vitest';
+import { createRateLimiter } from '../src/lib/rateLimit.js';
+
+describe('createRateLimiter', () => {
+  it('allows up to maxPerMinute requests without waiting', async () => {
+    let now = 0;
+    const sleep = vi.fn(async () => {});
+    const limiter = createRateLimiter(3, { now: () => now, sleep });
+
+    await limiter.acquire();
+    await limiter.acquire();
+    await limiter.acquire();
+
+    expect(sleep).not.toHaveBeenCalled();
+  });
+
+  it('waits until the oldest request falls out of the 60s window', async () => {
+    let now = 0;
+    const sleep = vi.fn(async (ms: number) => {
+      now += ms;
+    });
+    const limiter = createRateLimiter(2, { now: () => now, sleep });
+
+    await limiter.acquire(); // t=0
+    now = 1_000;
+    await limiter.acquire(); // t=1000
+    now = 2_000;
+    await limiter.acquire(); // should wait until first slot expires at 60_000
+
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(sleep.mock.calls[0]![0]).toBe(58_001);
+  });
+
+  it('floors invalid limits to at least 1 per minute', async () => {
+    let now = 0;
+    const sleep = vi.fn(async (ms: number) => {
+      now += ms;
+    });
+    const limiter = createRateLimiter(0, { now: () => now, sleep });
+
+    await limiter.acquire();
+    now = 1;
+    await limiter.acquire();
+
+    expect(sleep).toHaveBeenCalledTimes(1);
+  });
+});

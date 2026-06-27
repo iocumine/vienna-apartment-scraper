@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS listings (
   first_seen_at TEXT NOT NULL,
   last_seen_at  TEXT NOT NULL,
   is_active     INTEGER NOT NULL DEFAULT 1,
+  miss_count    INTEGER NOT NULL DEFAULT 0,
   title         TEXT,
   url           TEXT,
   district      INTEGER,

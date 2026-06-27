@@ -1,4 +1,5 @@
 import { movingAverage } from '../lib/metrics.js';
+import { getWillhabenAccessStatus, type WillhabenAccessStatus } from '../lib/willhabenStatus.js';
 import type { Repository } from '../db/index.js';
 import type { AppConfig, ListingRow } from '../types.js';
 
@@ -8,6 +9,7 @@ export interface Summary {
   newCount: number;
   districts: ReturnType<Repository['computePeriodDistrictStats']>;
   newListings: ListingRow[];
+  willhabenAccess: WillhabenAccessStatus;
 }
 
 export function buildSummary(
@@ -24,6 +26,7 @@ export function buildSummary(
     newCount: newListings.length,
     districts: repo.computePeriodDistrictStats(),
     newListings,
+    willhabenAccess: getWillhabenAccessStatus(),
   };
 }
 
@@ -88,6 +91,7 @@ export interface ListingsRow {
   area_m2: number | null;
   price: number | null;
   price_per_m2: number | null;
+  pendingVerification: boolean;
 }
 
 function toListingsRow(l: ListingRow): ListingsRow {
@@ -100,6 +104,7 @@ function toListingsRow(l: ListingRow): ListingsRow {
     area_m2: l.area_m2 ?? null,
     price: l.price ?? null,
     price_per_m2: l.price_per_m2 ?? null,
+    pendingVerification: l.is_active === 1 && (l.miss_count ?? 0) > 0,
   };
 }
 

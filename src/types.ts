@@ -27,7 +27,14 @@ export interface AppConfig {
   reportEmailTo: string[];
   requestDelayMs: number;
   maxPagesPerDistrict: number;
+  /** Max willhaben HTTP requests allowed in any rolling 60s window. */
+  willhabenRequestsPerMinute: number;
+  /** Consecutive poll misses before a willhaben verification check. */
+  verificationMissThreshold: number;
 }
+
+/** Hours a listing must be unseen before it is eligible for verification. */
+export const VERIFICATION_MIN_HOURS = 12;
 
 // A scraped + normalized listing (before persistence).
 export interface NormalizedListing {
@@ -53,6 +60,7 @@ export interface ListingRow {
   first_seen_at: string;
   last_seen_at: string;
   is_active: number;
+  miss_count: number;
   title: string | null;
   url: string | null;
   district: number | null;

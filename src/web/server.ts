@@ -15,6 +15,7 @@ import {
 } from './views.js';
 import type { Repository } from '../db/index.js';
 import type { AppConfig } from '../types.js';
+import { getWillhabenAccessStatus } from '../lib/willhabenStatus.js';
 
 function parseDistrictQuery(raw: unknown): number | null {
   const n = Number(typeof raw === 'string' ? raw : '');
@@ -24,6 +25,7 @@ function parseDistrictQuery(raw: unknown): number | null {
 // Build the Express dashboard app. Kept thin; logic lives in ./data (unit-tested).
 export function createServer(repo: Repository, config: AppConfig): Express {
   const app = express();
+  const access = () => getWillhabenAccessStatus();
 
   app.get('/', (_req, res) => {
     res.send(renderOverview(buildSummary(repo, config)));
@@ -31,20 +33,20 @@ export function createServer(repo: Repository, config: AppConfig): Express {
 
   app.get('/listings', (req, res) => {
     const district = parseDistrictQuery(req.query.district);
-    res.send(renderListings(buildActiveListings(repo), district));
+    res.send(renderListings(buildActiveListings(repo), district, access()));
   });
 
   app.get('/new-listings', (req, res) => {
     const district = parseDistrictQuery(req.query.district);
-    res.send(renderNewListings(buildNewListings(repo), district));
+    res.send(renderNewListings(buildNewListings(repo), district, access()));
   });
 
   app.get('/trends', (_req, res) => {
-    res.send(renderTrends(buildTrends(repo)));
+    res.send(renderTrends(buildTrends(repo), access()));
   });
 
   app.get('/map', (_req, res) => {
-    res.send(renderMap(buildMapData(repo)));
+    res.send(renderMap(buildMapData(repo), access()));
   });
 
   app.get('/api/summary', (_req, res) => {

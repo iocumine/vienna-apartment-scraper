@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +15,11 @@ import {
   BASE_URL,
   type Advert,
 } from '../src/scraper/willhaben.js';
+import {
+  getWillhabenAccessStatus,
+  recordWillhabenForbidden,
+  resetWillhabenAccessStatus,
+} from '../src/lib/willhabenStatus.js';
 import type { AppConfig } from '../src/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -32,6 +37,12 @@ describe('buildSearchUrl', () => {
     expect(url).toContain('page=2');
     expect(url).toContain('NO_OF_ROOMS_BUCKET_FROM=1');
     expect(url).toContain('NO_OF_ROOMS_BUCKET_TO=2');
+  });
+
+  it('supports district areaId and keyword lookup', () => {
+    const url = buildSearchUrl({ areaId: 1070, keyword: '1100144463' });
+    expect(url).toContain('areaId=1070');
+    expect(url).toContain('keyword=1100144463');
   });
 
   it('uses the buy path for purchases', () => {
@@ -160,6 +171,8 @@ describe('filterListings', () => {
 });
 
 describe('fetchPage', () => {
+  beforeEach(() => resetWillhabenAccessStatus());
+
   it('fetches HTML and returns normalized listings', async () => {
     const html = `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(fixture)}</script>`;
     const fetchImpl = async () => ({ ok: true, status: 200, text: async () => html });
@@ -176,6 +189,44 @@ describe('fetchPage', () => {
       text: async () => '',
     });
     await expect(fetchPage('http://x', { fetchImpl })).rejects.toThrow(/403/);
+  });
+
+  it('records willhaben access as forbidden on HTTP 403', async () => {
+    const fetchImpl = async () => ({
+      ok: false,
+      status: 403,
+      statusText: 'Forbidden',
+      text: async () => '',
+    });
+    await expect(fetchPage('http://x', { fetchImpl })).rejects.toThrow(/403/);
+    expect(getWillhabenAccessStatus().forbidden).toBe(true);
+  });
+
+  it('clears forbidden state after a successful fetch', async () => {
+    const html = `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(fixture)}</script>`;
+    const fetchImpl = async () => ({ ok: true, status: 200, text: async () => html });
+    recordWillhabenForbidden('blocked');
+    await fetchPage('http://x', { fetchImpl });
+    expect(getWillhabenAccessStatus().forbidden).toBe(false);
+  });
+
+  it('does not mark access forbidden for other HTTP errors', async () => {
+    const fetchImpl = async () => ({
+      ok: false,
+      status: 500,
+      statusText: 'Error',
+      text: async () => '',
+    });
+    await expect(fetchPage('http://x', { fetchImpl })).rejects.toThrow(/500/);
+    expect(getWillhabenAccessStatus().forbidden).toBe(false);
+  });
+
+  it('acquires from the rate limiter before fetching', async () => {
+    const html = `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(fixture)}</script>`;
+    const fetchImpl = async () => ({ ok: true, status: 200, text: async () => html });
+    const acquire = vi.fn(async () => {});
+    await fetchPage('http://x', { fetchImpl, rateLimiter: { acquire } });
+    expect(acquire).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -199,7 +250,7 @@ describe('scrape', () => {
     };
     const result = await scrape(cfg, { fetchImpl, sleep: async () => {} });
     expect(result.map((l) => l.id).sort()).toEqual(['1001', '1002', '1004']);
-    expect(calls).toBe(2);
+    expect(calls).toBe(4);
   });
 
   it('stops gracefully when a page fails', async () => {

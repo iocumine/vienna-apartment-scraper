@@ -1,7 +1,25 @@
 import { escapeHtml, eur } from '../alerts/format.js';
+import type { WillhabenAccessStatus } from '../lib/willhabenStatus.js';
 import type { Summary, Trends, MapPoint, ListingsRow } from './data.js';
 
-function layout(title: string, nav: string, body: string): string {
+function forbiddenAlertHtml(access: WillhabenAccessStatus | undefined): string {
+  if (!access?.forbidden) return '';
+  const when = access.lastForbiddenAt
+    ? ` Last seen at ${escapeHtml(access.lastForbiddenAt)}.`
+    : '';
+  const detail = access.lastMessage ? ` ${escapeHtml(access.lastMessage)}` : '';
+  return `<div class="alert-forbidden" role="alert">
+    <strong>Willhaben access blocked (HTTP 403).</strong>
+    Scraping and verification may be incomplete until access is restored.${when}${detail}
+  </div>`;
+}
+
+function layout(
+  title: string,
+  nav: string,
+  body: string,
+  accessStatus?: WillhabenAccessStatus,
+): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -14,6 +32,7 @@ function layout(title: string, nav: string, body: string): string {
     header { background: #1f2937; color: #fff; padding: 12px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
     header a { color: #cbd5e1; text-decoration: none; }
     header a:hover { color: #fff; }
+    .alert-forbidden { background: #fef2f2; color: #991b1b; border-bottom: 1px solid #fecaca; padding: 12px 20px; font-size: 14px; line-height: 1.45; }
     main { padding: 20px; max-width: 1100px; margin: 0 auto; }
     table { border-collapse: collapse; width: 100%; margin: 12px 0; }
     th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 14px; }
@@ -30,6 +49,7 @@ function layout(title: string, nav: string, body: string): string {
     tr.filters .cmp input { flex: 1 1 64px; width: auto; min-width: 64px; }
     a.card-link { text-decoration: none; color: inherit; cursor: pointer; }
     a.card-link:hover { background: #eef2ff; border-color: #c7d2fe; }
+    .badge-pending { font-size: 11px; color: #92400e; background: #fef3c7; padding: 2px 6px; border-radius: 4px; margin-left: 6px; white-space: nowrap; }
     .cards { display: flex; gap: 16px; flex-wrap: wrap; }
     .card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; min-width: 140px; }
     .card .n { font-size: 28px; font-weight: 700; }
@@ -74,6 +94,7 @@ function layout(title: string, nav: string, body: string): string {
     <strong>Vienna Apartments</strong>
     ${nav}
   </header>
+  ${forbiddenAlertHtml(accessStatus)}
   <main>${body}</main>
 </body>
 </html>`;
@@ -92,6 +113,7 @@ interface ListingLikeRow {
   area_m2?: number | null;
   price?: number | null;
   price_per_m2?: number | null;
+  pendingVerification?: boolean;
 }
 
 // Sortable column headers shared by the overview and listings tables. Each cell
@@ -106,8 +128,11 @@ const LISTING_HEADERS = `<tr>
     </tr>`;
 
 function listingRowHtml(l: ListingLikeRow): string {
+  const pending = l.pendingVerification
+    ? ' <span class="badge-pending" title="Not seen in recent polls; awaiting verification">pending verification</span>'
+    : '';
   return `<tr>
-      <td><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.title ?? 'Untitled')}</a></td>
+      <td><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.title ?? 'Untitled')}</a>${pending}</td>
       <td data-sort-value="${l.district ?? ''}">${l.district ?? '?'}</td>
       <td data-sort-value="${l.rooms ?? ''}">${l.rooms ?? '?'}</td>
       <td data-sort-value="${l.area_m2 ?? ''}">${l.area_m2 ?? '?'}</td>
@@ -207,7 +232,7 @@ export function renderOverview(summary: Summary): string {
         });
       })();
     </script>`;
-  return layout('Vienna Apartments - Overview', NAV, body);
+  return layout('Vienna Apartments - Overview', NAV, body, summary.willhabenAccess);
 }
 
 interface ListingsPageOptions {
@@ -216,11 +241,19 @@ interface ListingsPageOptions {
   emptyText: string;
   listings: ListingsRow[];
   initialDistrict?: number | null;
+  accessStatus?: WillhabenAccessStatus;
 }
 
 // Shared filterable + sortable listings page. Used for both the full active set
 // and the last-24h new listings so the table/filter logic lives in one place.
-function listingsPage({ docTitle, heading, emptyText, listings, initialDistrict = null }: ListingsPageOptions): string {
+function listingsPage({
+  docTitle,
+  heading,
+  emptyText,
+  listings,
+  initialDistrict = null,
+  accessStatus,
+}: ListingsPageOptions): string {
   const districts = [...new Set(listings.map((l) => l.district).filter((d): d is number => d != null))];
   if (initialDistrict != null && Number.isFinite(initialDistrict)) districts.push(initialDistrict);
   districts.sort((a, b) => a - b);
@@ -323,30 +356,40 @@ function listingsPage({ docTitle, heading, emptyText, listings, initialDistrict 
         apply();
       })();
     </script>`;
-  return layout(docTitle, NAV, body);
+  return layout(docTitle, NAV, body, accessStatus);
 }
 
-export function renderListings(listings: ListingsRow[], initialDistrict?: number | null): string {
+export function renderListings(
+  listings: ListingsRow[],
+  initialDistrict?: number | null,
+  accessStatus?: WillhabenAccessStatus,
+): string {
   return listingsPage({
     docTitle: 'Vienna Apartments - Active listings',
     heading: 'Active listings',
     emptyText: 'No active listings',
     listings,
     initialDistrict: initialDistrict ?? null,
+    accessStatus,
   });
 }
 
-export function renderNewListings(listings: ListingsRow[], initialDistrict?: number | null): string {
+export function renderNewListings(
+  listings: ListingsRow[],
+  initialDistrict?: number | null,
+  accessStatus?: WillhabenAccessStatus,
+): string {
   return listingsPage({
     docTitle: 'Vienna Apartments - New listings',
     heading: 'New listings (last 24h)',
     emptyText: 'No new listings in the last 24h',
     listings,
     initialDistrict: initialDistrict ?? null,
+    accessStatus,
   });
 }
 
-export function renderTrends(trends: Trends): string {
+export function renderTrends(trends: Trends, accessStatus?: WillhabenAccessStatus): string {
   const districtOptions = trends.series
     .map((s) => `<option value="${s.district}">District ${s.district}</option>`)
     .join('');
@@ -807,10 +850,10 @@ export function renderTrends(trends: Trends): string {
       // Restore previously configured tiles.
       loadSavedDistricts().forEach(addTile);
     </script>`;
-  return layout('Vienna Apartments - Trends', NAV, body);
+  return layout('Vienna Apartments - Trends', NAV, body, accessStatus);
 }
 
-export function renderMap(points: MapPoint[]): string {
+export function renderMap(points: MapPoint[], accessStatus?: WillhabenAccessStatus): string {
   const body = `
     <h1>Listings map</h1>
     <p>Green = below district median sqm price, red = at/above.</p>
@@ -836,5 +879,5 @@ export function renderMap(points: MapPoint[]): string {
           );
       }
     </script>`;
-  return layout('Vienna Apartments - Map', NAV, body);
+  return layout('Vienna Apartments - Map', NAV, body, accessStatus);
 }

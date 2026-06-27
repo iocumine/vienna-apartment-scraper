@@ -110,5 +110,7 @@ export function loadConfig(env: Env = process.env): AppConfig {
 
     requestDelayMs: num(env.REQUEST_DELAY_MS, 1500),
     maxPagesPerDistrict: num(env.MAX_PAGES_PER_DISTRICT, 5),
+    willhabenRequestsPerMinute: num(env.WILLHABEN_REQUESTS_PER_MINUTE, 50),
+    verificationMissThreshold: num(env.VERIFICATION_MISS_THRESHOLD, 5),
   };
 }
