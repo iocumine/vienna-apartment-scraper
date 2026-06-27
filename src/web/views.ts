@@ -37,6 +37,9 @@ function layout(title: string, nav: string, body: string): string {
     .tile { position: relative; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 0 0 16px; }
     .tile h2 { margin: 0 68px 12px 0; font-size: 16px; }
     .tile .head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+    .tile-links { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tile-link { font-size: 13px; padding: 5px 10px; border-radius: 6px; border: 1px solid #d1d5db; background: #f9fafb; color: #2563eb; text-decoration: none; white-space: nowrap; }
+    .tile-link:hover { background: #eef2ff; border-color: #c7d2fe; }
     .series-toggle { display: flex; align-items: center; gap: 6px; font-size: 14px; }
     .series-toggle select { font-size: 14px; padding: 6px 8px; border-radius: 6px; border: 1px solid #d1d5db; }
     .chart-wrap { position: relative; width: 100%; height: 320px; }
@@ -212,18 +215,22 @@ interface ListingsPageOptions {
   heading: string;
   emptyText: string;
   listings: ListingsRow[];
+  initialDistrict?: number | null;
 }
 
 // Shared filterable + sortable listings page. Used for both the full active set
 // and the last-24h new listings so the table/filter logic lives in one place.
-function listingsPage({ docTitle, heading, emptyText, listings }: ListingsPageOptions): string {
-  const districts = [...new Set(listings.map((l) => l.district).filter((d): d is number => d != null))].sort(
-    (a, b) => a - b,
-  );
+function listingsPage({ docTitle, heading, emptyText, listings, initialDistrict = null }: ListingsPageOptions): string {
+  const districts = [...new Set(listings.map((l) => l.district).filter((d): d is number => d != null))];
+  if (initialDistrict != null && Number.isFinite(initialDistrict)) districts.push(initialDistrict);
+  districts.sort((a, b) => a - b);
+  const uniqueDistricts = [...new Set(districts)];
   const roomCounts = [...new Set(listings.map((l) => l.rooms).filter((r): r is number => r != null))].sort(
     (a, b) => a - b,
   );
-  const districtOptions = districts.map((d) => `<option value="${d}">${d}</option>`).join('');
+  const districtOptions = uniqueDistricts
+    .map((d) => `<option value="${d}"${initialDistrict === d ? ' selected' : ''}>${d}</option>`)
+    .join('');
   const roomOptions = roomCounts.map((r) => `<option value="${r}">${r}</option>`).join('');
   const cmp = (idPrefix: string, placeholder: string): string =>
     `<span class="cmp">
@@ -305,8 +312,13 @@ function listingsPage({ docTitle, heading, emptyText, listings }: ListingsPageOp
           const n = Number(district);
           if (!Number.isFinite(n)) return;
           const sel = f['f-district'];
-          const match = Array.prototype.find.call(sel.options, function (o) { return o.value === String(n); });
-          if (match) sel.value = String(n);
+          if (!Array.prototype.some.call(sel.options, function (o) { return o.value === String(n); })) {
+            const opt = document.createElement('option');
+            opt.value = String(n);
+            opt.textContent = String(n);
+            sel.appendChild(opt);
+          }
+          sel.value = String(n);
         })();
         apply();
       })();
@@ -314,21 +326,23 @@ function listingsPage({ docTitle, heading, emptyText, listings }: ListingsPageOp
   return layout(docTitle, NAV, body);
 }
 
-export function renderListings(listings: ListingsRow[]): string {
+export function renderListings(listings: ListingsRow[], initialDistrict?: number | null): string {
   return listingsPage({
     docTitle: 'Vienna Apartments - Active listings',
     heading: 'Active listings',
     emptyText: 'No active listings',
     listings,
+    initialDistrict: initialDistrict ?? null,
   });
 }
 
-export function renderNewListings(listings: ListingsRow[]): string {
+export function renderNewListings(listings: ListingsRow[], initialDistrict?: number | null): string {
   return listingsPage({
     docTitle: 'Vienna Apartments - New listings',
     heading: 'New listings (last 24h)',
     emptyText: 'No new listings in the last 24h',
     listings,
+    initialDistrict: initialDistrict ?? null,
   });
 }
 
@@ -683,6 +697,20 @@ export function renderTrends(trends: Trends): string {
         const h2 = document.createElement('h2');
         h2.textContent = 'District ' + district + ' \u2014 median & moving averages';
         head.appendChild(h2);
+
+        const links = document.createElement('div');
+        links.className = 'tile-links';
+        const activeLink = document.createElement('a');
+        activeLink.className = 'tile-link';
+        activeLink.href = '/listings?district=' + district;
+        activeLink.textContent = 'View active';
+        const newLink = document.createElement('a');
+        newLink.className = 'tile-link';
+        newLink.href = '/new-listings?district=' + district;
+        newLink.textContent = 'View new';
+        links.appendChild(activeLink);
+        links.appendChild(newLink);
+        head.appendChild(links);
 
         const actions = document.createElement('div');
         actions.className = 'tile-actions';

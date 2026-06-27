@@ -150,6 +150,11 @@ describe('views render valid html', () => {
     expect(allListings).toContain('id="f-title"');
     expect(allListings).toContain('id="f-district"');
     expect(allListings).toContain('function initFromQuery');
+    expect(allListings).toContain('sel.appendChild(opt)');
+
+    // District from URL is pre-selected even when no listings exist in that district yet.
+    const filtered = renderListings(buildActiveListings(repo), 8);
+    expect(filtered).toContain('<option value="8" selected>8</option>');
     expect(allListings).toContain('id="f-rooms"');
     expect(allListings).toContain('id="f-price-op"');
     expect(allListings).toContain('id="f-price-val"');
@@ -205,6 +210,11 @@ describe('views render valid html', () => {
     expect(trends).toContain('localStorage');
     expect(trends).toContain('loadSavedDistricts');
     expect(trends).toContain('insertTileSorted');
+    expect(trends).toContain('tile-links');
+    expect(trends).toContain('View active');
+    expect(trends).toContain('View new');
+    expect(trends).toContain("'/listings?district=' + district");
+    expect(trends).toContain("'/new-listings?district=' + district");
     expect(trends).toContain("className = 'tile-actions'");
     expect(trends).toContain("className = 'maximize'");
     expect(trends).toContain("className = 'restore'");

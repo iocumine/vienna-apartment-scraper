@@ -16,6 +16,11 @@ import {
 import type { Repository } from '../db/index.js';
 import type { AppConfig } from '../types.js';
 
+function parseDistrictQuery(raw: unknown): number | null {
+  const n = Number(typeof raw === 'string' ? raw : '');
+  return Number.isFinite(n) ? n : null;
+}
+
 // Build the Express dashboard app. Kept thin; logic lives in ./data (unit-tested).
 export function createServer(repo: Repository, config: AppConfig): Express {
   const app = express();
@@ -24,12 +29,14 @@ export function createServer(repo: Repository, config: AppConfig): Express {
     res.send(renderOverview(buildSummary(repo, config)));
   });
 
-  app.get('/listings', (_req, res) => {
-    res.send(renderListings(buildActiveListings(repo)));
+  app.get('/listings', (req, res) => {
+    const district = parseDistrictQuery(req.query.district);
+    res.send(renderListings(buildActiveListings(repo), district));
   });
 
-  app.get('/new-listings', (_req, res) => {
-    res.send(renderNewListings(buildNewListings(repo)));
+  app.get('/new-listings', (req, res) => {
+    const district = parseDistrictQuery(req.query.district);
+    res.send(renderNewListings(buildNewListings(repo), district));
   });
 
   app.get('/trends', (_req, res) => {
