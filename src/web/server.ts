@@ -17,8 +17,9 @@ import type { Repository } from '../db/index.js';
 import type { AppConfig } from '../types.js';
 import { getUiAlerts } from '../lib/willhabenStatus.js';
 
-function parseDistrictQuery(raw: unknown): number | null {
-  const n = Number(typeof raw === 'string' ? raw : '');
+export function parseDistrictQuery(raw: unknown): number | null {
+  if (raw === undefined || raw === null || String(raw).trim() === '') return null;
+  const n = Number(String(raw));
   return Number.isFinite(n) ? n : null;
 }
 

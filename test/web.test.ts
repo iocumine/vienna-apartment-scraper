@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import { createRepository, type Repository } from '../src/db/index.js';
 import { buildSummary, buildTrends, buildMapData, buildActiveListings, buildNewListings } from '../src/web/data.js';
 import { renderOverview, renderTrends, renderMap, renderListings, renderNewListings } from '../src/web/views.js';
+import { parseDistrictQuery } from '../src/web/server.js';
 import { resetWillhabenAccessStatus, recordWillhabenForbidden, recordVerificationDeferred } from '../src/lib/willhabenStatus.js';
 import { recordWillhabenRequest, resetWillhabenRequestTracking } from '../src/lib/rateLimit.js';
 import type { AppConfig, NormalizedListing } from '../src/types.js';
@@ -176,6 +177,24 @@ describe('buildMapData', () => {
   });
 });
 
+describe('parseDistrictQuery', () => {
+  it('returns null when the param is missing or empty', () => {
+    expect(parseDistrictQuery(undefined)).toBeNull();
+    expect(parseDistrictQuery(null)).toBeNull();
+    expect(parseDistrictQuery('')).toBeNull();
+    expect(parseDistrictQuery('   ')).toBeNull();
+  });
+
+  it('parses numeric district values', () => {
+    expect(parseDistrictQuery('7')).toBe(7);
+    expect(parseDistrictQuery('0')).toBe(0);
+  });
+
+  it('returns null for non-numeric values', () => {
+    expect(parseDistrictQuery('abc')).toBeNull();
+  });
+});
+
 describe('views render valid html', () => {
   beforeEach(() => resetWillhabenAccessStatus());
 
@@ -221,6 +240,7 @@ describe('views render valid html', () => {
     expect(allListings).toContain('id="f-ppm2-op"');
     expect(allListings).toContain('id="f-area-op"');
     expect(allListings).toContain('<option value="7">7</option>'); // district option
+    expect(allListings).not.toContain('<option value="0">0</option>');
     expect(allListings).toContain('function matches');
 
     // New listings reuse the same filterable/sortable table page.
