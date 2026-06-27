@@ -152,8 +152,11 @@ function sortableScript(): string {
 export function renderOverview(summary: Summary): string {
   const districtRows = summary.districts
     .map(
-      (d) => `<tr><td>${d.district}</td><td>${escapeHtml(eur(d.median_price_per_m2))}</td>
-      <td>${escapeHtml(eur(d.avg_price_per_m2))}</td><td>${d.active_count}</td></tr>`,
+      (d) => `<tr>
+      <td data-sort-value="${d.district}">${d.district}</td>
+      <td data-sort-value="${d.median_price_per_m2 ?? ''}">${escapeHtml(eur(d.median_price_per_m2))}</td>
+      <td data-sort-value="${d.avg_price_per_m2 ?? ''}">${escapeHtml(eur(d.avg_price_per_m2))}</td>
+      <td data-sort-value="${d.active_count}">${d.active_count}</td></tr>`,
     )
     .join('');
   const body = `
@@ -164,8 +167,15 @@ export function renderOverview(summary: Summary): string {
       <div class="card"><div class="n">${summary.districts.length}</div>districts tracked</div>
     </div>
     <h2>Current sqm price by district</h2>
-    <table><thead><tr><th>District</th><th>Median EUR/m&sup2;</th><th>Avg EUR/m&sup2;</th><th>Active</th></tr></thead>
-    <tbody>${districtRows || '<tr><td colspan="4">No data yet</td></tr>'}</tbody></table>`;
+    <table id="district-stats" class="sortable">
+      <thead><tr>
+        <th data-type="num">District<span class="arrow"></span></th>
+        <th data-type="num">Median EUR/m&sup2;<span class="arrow"></span></th>
+        <th data-type="num">Avg EUR/m&sup2;<span class="arrow"></span></th>
+        <th data-type="num">Active<span class="arrow"></span></th>
+      </tr></thead>
+    <tbody>${districtRows || '<tr><td colspan="4">No data yet</td></tr>'}</tbody></table>
+    ${sortableScript()}`;
   return layout('Vienna Apartments - Overview', NAV, body);
 }
 

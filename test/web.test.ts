@@ -130,6 +130,11 @@ describe('views render valid html', () => {
     expect(overview).not.toContain('id="listings-table"');
     expect(overview).toContain('href="/listings"');
     expect(overview).toContain('href="/new-listings"');
+    // District stats table is sortable by clicking column headers.
+    expect(overview).toContain('id="district-stats"');
+    expect(overview).toContain('class="sortable"');
+    expect(overview).toContain('data-sort-value="7"');
+    expect(overview).toContain('function sortBy');
 
     const allListings = renderListings(buildActiveListings(repo));
     expect(allListings).toContain('Active listings');
