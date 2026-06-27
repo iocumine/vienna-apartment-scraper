@@ -77,6 +77,11 @@ function str(value: string | undefined, fallback: string): string {
   return String(value);
 }
 
+function bool(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined || value === null || String(value).trim() === '') return fallback;
+  return String(value).toLowerCase() === 'true';
+}
+
 // Parse a comma- (or semicolon-) separated list of email addresses into a
 // deduped array, falling back when nothing usable is provided.
 export function parseEmails(value: string | undefined | null, fallback: string[] = []): string[] {
@@ -123,6 +128,7 @@ export function loadConfig(env: Env = process.env): AppConfig {
     requestDelayMs: num(env.REQUEST_DELAY_MS, 1500),
     maxPagesPerDistrict: num(env.MAX_PAGES_PER_DISTRICT, 5),
     willhabenRequestsPerMinute: num(env.WILLHABEN_REQUESTS_PER_MINUTE, 25),
+    showWillhabenRequestStats: bool(env.SHOW_WILLHABEN_REQUEST_STATS, false),
     verificationMissThresholdMin: num(env.VERIFICATION_MISS_THRESHOLD_MIN, 10),
     verificationMissThresholdMax: num(env.VERIFICATION_MISS_THRESHOLD_MAX, 50),
   };

@@ -5,6 +5,8 @@ import {
   buildMapData,
   buildActiveListings,
   buildNewListings,
+  buildPendingVerificationListings,
+  buildVerifiedRemovedListings,
 } from './data.js';
 import {
   renderOverview,
@@ -12,6 +14,8 @@ import {
   renderMap,
   renderListings,
   renderNewListings,
+  renderPendingVerificationListings,
+  renderVerifiedRemovedListings,
   renderWillhabenRequests,
 } from './views.js';
 import type { Repository } from '../db/index.js';
@@ -42,6 +46,16 @@ export function createServer(repo: Repository, config: AppConfig): Express {
   app.get('/new-listings', (req, res) => {
     const district = parseDistrictQuery(req.query.district);
     res.send(renderNewListings(buildNewListings(repo), district, alerts()));
+  });
+
+  app.get('/pending-verification', (req, res) => {
+    const district = parseDistrictQuery(req.query.district);
+    res.send(renderPendingVerificationListings(buildPendingVerificationListings(repo), district, alerts()));
+  });
+
+  app.get('/removed-listings', (req, res) => {
+    const district = parseDistrictQuery(req.query.district);
+    res.send(renderVerifiedRemovedListings(buildVerifiedRemovedListings(repo), district, alerts()));
   });
 
   app.get('/willhaben-requests', (_req, res) => {

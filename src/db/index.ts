@@ -340,6 +340,35 @@ export function createRepository(db: DB, options: RepositoryOptions = {}) {
     ).n;
   }
 
+  function getPendingVerificationListings(): ListingRow[] {
+    return db
+      .prepare(
+        `SELECT * FROM listings
+         WHERE is_active = 1 AND miss_count > 0
+         ORDER BY miss_count DESC, district ASC, price ASC`,
+      )
+      .all() as ListingRow[];
+  }
+
+  function getVerifiedRemovedListings(): ListingRow[] {
+    return db
+      .prepare(
+        `SELECT * FROM listings
+         WHERE is_active = 0 AND miss_count >= verification_miss_threshold
+         ORDER BY last_seen_at DESC`,
+      )
+      .all() as ListingRow[];
+  }
+
+  function countVerifiedRemoved(): number {
+    return (
+      db.prepare(
+        `SELECT COUNT(*) AS n FROM listings
+         WHERE is_active = 0 AND miss_count >= verification_miss_threshold`,
+      ).get() as { n: number }
+    ).n;
+  }
+
   function close(): void {
     db.close();
   }
@@ -368,6 +397,9 @@ export function createRepository(db: DB, options: RepositoryOptions = {}) {
     getListingsForMap,
     countActive,
     countPendingVerification,
+    getPendingVerificationListings,
+    getVerifiedRemovedListings,
+    countVerifiedRemoved,
     close,
   };
 }

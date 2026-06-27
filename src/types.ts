@@ -29,6 +29,8 @@ export interface AppConfig {
   maxPagesPerDistrict: number;
   /** Max willhaben HTTP requests allowed in any rolling 60s window. */
   willhabenRequestsPerMinute: number;
+  /** When true, show willhaben request-rate tiles on the overview page. */
+  showWillhabenRequestStats: boolean;
   /** Per-listing miss threshold is chosen randomly in [min, max] when first seen. */
   verificationMissThresholdMin: number;
   verificationMissThresholdMax: number;

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createRepository, type Repository } from '../src/db/index.js';
-import { buildSummary, buildTrends, buildMapData, buildActiveListings, buildNewListings } from '../src/web/data.js';
-import { renderOverview, renderTrends, renderMap, renderListings, renderNewListings, renderWillhabenRequests } from '../src/web/views.js';
+import { buildSummary, buildTrends, buildMapData, buildActiveListings, buildNewListings, buildPendingVerificationListings, buildVerifiedRemovedListings } from '../src/web/data.js';
+import { renderOverview, renderTrends, renderMap, renderListings, renderNewListings, renderPendingVerificationListings, renderVerifiedRemovedListings, renderWillhabenRequests } from '../src/web/views.js';
 import { parseDistrictQuery } from '../src/web/server.js';
 import { resetWillhabenAccessStatus, recordWillhabenForbidden, recordVerificationDeferred } from '../src/lib/willhabenStatus.js';
 import { recordWillhabenRequest, resetWillhabenRequestTracking, getWillhabenRequestsLast60s } from '../src/lib/rateLimit.js';
@@ -55,6 +55,19 @@ describe('buildSummary', () => {
     expect(summary.willhabenRequestsLast60s).toBe(2);
     expect(summary.willhabenRequestsPerMinute).toBe(25);
     expect(summary.pendingVerificationCount).toBe(1);
+  });
+
+  it('includes verified removed count', () => {
+    const repo = repoAt('2026-06-06T12:00:00.000Z');
+    repo.upsertListing(listing({ id: 'gone' }));
+    repo.db.prepare(
+      `UPDATE listings SET is_active = 0, miss_count = 10, verification_miss_threshold = 5 WHERE id = ?`,
+    ).run('gone');
+    repo.upsertListing(listing({ id: 'other-off' }));
+    repo.deactivateListing('other-off');
+
+    const summary = buildSummary(repo, config, () => '2026-06-06T12:00:00.000Z');
+    expect(summary.verifiedRemovedCount).toBe(1);
   });
 
   it('includes willhaben 403 status in the summary payload', () => {
@@ -161,6 +174,35 @@ describe('buildNewListings', () => {
   });
 });
 
+describe('buildPendingVerificationListings', () => {
+  it('returns only active listings with miss_count > 0', () => {
+    const repo = repoAt('2026-06-06T12:00:00.000Z');
+    repo.upsertListing(listing({ id: 'ok', district: 7 }));
+    repo.upsertListing(listing({ id: 'pending', district: 9 }));
+    repo.db.prepare('UPDATE listings SET miss_count = 2 WHERE id = ?').run('pending');
+
+    const rows = buildPendingVerificationListings(repo);
+    expect(rows.map((l) => l.id)).toEqual(['pending']);
+    expect(rows[0]!.pendingVerification).toBe(true);
+  });
+});
+
+describe('buildVerifiedRemovedListings', () => {
+  it('returns inactive listings that reached verification threshold before removal', () => {
+    const repo = repoAt('2026-06-06T12:00:00.000Z');
+    repo.upsertListing(listing({ id: 'verified-gone', district: 7 }));
+    repo.db.prepare(
+      `UPDATE listings SET is_active = 0, miss_count = 10, verification_miss_threshold = 5 WHERE id = ?`,
+    ).run('verified-gone');
+    repo.upsertListing(listing({ id: 'other-off', district: 9 }));
+    repo.deactivateListing('other-off');
+
+    const rows = buildVerifiedRemovedListings(repo);
+    expect(rows.map((l) => l.id)).toEqual(['verified-gone']);
+    expect(rows[0]!.pendingVerification).toBe(false);
+  });
+});
+
 describe('buildMapData', () => {
   it('tags listings as below/above district median and skips ungeocoded', () => {
     const repo = repoAt('2026-06-06T12:00:00.000Z');
@@ -239,10 +281,18 @@ describe('views render valid html', () => {
     expect(overview).not.toContain('id="listings-table"');
     expect(overview).toContain('href="/listings"');
     expect(overview).toContain('href="/new-listings"');
-    expect(overview).toContain('requests last 60s');
-    expect(overview).toContain('href="/willhaben-requests"');
-    expect(overview).toContain('max requests / min');
+    expect(overview).toContain('href="/pending-verification"');
+    expect(overview).toContain('href="/removed-listings"');
+    expect(overview).toContain('removed after verification');
     expect(overview).toContain('pending verification');
+    expect(overview).toContain('class="card-rows"');
+    expect(overview).not.toContain('requests last 60s');
+    expect(overview).not.toContain('max requests / min');
+    // Row 1: listing tiles before districts.
+    expect(overview.indexOf('active listings')).toBeLessThan(overview.indexOf('districts tracked'));
+    expect(overview.indexOf('new in last 24h')).toBeLessThan(overview.indexOf('districts tracked'));
+    expect(overview.indexOf('removed after verification')).toBeLessThan(overview.indexOf('districts tracked'));
+    expect(overview.indexOf('pending verification')).toBeLessThan(overview.indexOf('districts tracked'));
     // District stats table is sortable by clicking column headers.
     expect(overview).toContain('id="district-stats"');
     expect(overview).toContain('class="sortable"');
@@ -280,6 +330,15 @@ describe('views render valid html', () => {
     expect(newListings).toContain('id="f-district"');
     expect(newListings).toContain('id="f-price-op"');
     expect(newListings).toContain('function matches');
+
+    const pending = renderPendingVerificationListings(buildPendingVerificationListings(repo));
+    expect(pending).toContain('Pending verification');
+    expect(pending).toContain('id="listings-table"');
+    expect(pending).toContain('id="f-district"');
+
+    const removed = renderVerifiedRemovedListings(buildVerifiedRemovedListings(repo));
+    expect(removed).toContain('Removed after verification');
+    expect(removed).toContain('id="listings-table"');
 
     const trends = renderTrends(buildTrends(repo));
     expect(trends).toContain('chart.js');
@@ -343,6 +402,20 @@ describe('views render valid html', () => {
     expect(map).toContain('openstreetmap');
   });
 
+  it('shows willhaben request tiles on overview when configured', () => {
+    const repo = repoAt('2026-06-06T12:00:00.000Z');
+    const summary = buildSummary(
+      repo,
+      { ...config, showWillhabenRequestStats: true } as AppConfig,
+      () => '2026-06-06T12:00:00.000Z',
+    );
+    const overview = renderOverview(summary);
+    expect(overview).toContain('requests last 60s');
+    expect(overview).toContain('href="/willhaben-requests"');
+    expect(overview).toContain('max requests / min');
+    expect(overview.indexOf('districts tracked')).toBeLessThan(overview.indexOf('requests last 60s'));
+  });
+
   it('renders empty states', () => {
     const repo = repoAt('2026-06-06T12:00:00.000Z');
     const overview = renderOverview(buildSummary(repo, config, () => '2026-06-06T12:00:00.000Z'));
@@ -351,6 +424,12 @@ describe('views render valid html', () => {
     expect(renderListings(buildActiveListings(repo))).toContain('No active listings');
     expect(renderNewListings(buildNewListings(repo, () => '2026-06-06T12:00:00.000Z'))).toContain(
       'No new listings',
+    );
+    expect(renderPendingVerificationListings(buildPendingVerificationListings(repo))).toContain(
+      'No listings pending verification',
+    );
+    expect(renderVerifiedRemovedListings(buildVerifiedRemovedListings(repo))).toContain(
+      'No listings removed after verification',
     );
   });
 

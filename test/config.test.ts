@@ -78,6 +78,13 @@ describe('loadConfig', () => {
     expect(cfg.verificationMissThresholdMin).toBe(10);
     expect(cfg.verificationMissThresholdMax).toBe(50);
     expect(cfg.willhabenRequestsPerMinute).toBe(25);
+    expect(cfg.showWillhabenRequestStats).toBe(false);
+  });
+
+  it('reads showWillhabenRequestStats from env', () => {
+    expect(loadConfig({ SHOW_WILLHABEN_REQUEST_STATS: 'true' }).showWillhabenRequestStats).toBe(true);
+    expect(loadConfig({ SHOW_WILLHABEN_REQUEST_STATS: 'false' }).showWillhabenRequestStats).toBe(false);
+    expect(loadConfig({}).showWillhabenRequestStats).toBe(false);
   });
 
   it('reads overrides from env', () => {

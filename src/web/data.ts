@@ -14,6 +14,8 @@ export interface Summary {
   willhabenRequestsLast60s: number;
   willhabenRequestsPerMinute: number;
   pendingVerificationCount: number;
+  verifiedRemovedCount: number;
+  showWillhabenRequestStats: boolean;
 }
 
 export function buildSummary(
@@ -34,6 +36,8 @@ export function buildSummary(
     willhabenRequestsLast60s: countWillhabenRequestsLast60s(new Date(nowIso).getTime()),
     willhabenRequestsPerMinute: config.willhabenRequestsPerMinute ?? 25,
     pendingVerificationCount: repo.countPendingVerification(),
+    verifiedRemovedCount: repo.countVerifiedRemoved(),
+    showWillhabenRequestStats: config.showWillhabenRequestStats ?? false,
   };
 }
 
@@ -136,6 +140,14 @@ export function buildNewListings(
 ): ListingsRow[] {
   const since = new Date(new Date(now()).getTime() - 24 * 60 * 60 * 1000).toISOString();
   return repo.getNewListingsSince(since).map(toListingsRow);
+}
+
+export function buildPendingVerificationListings(repo: Repository): ListingsRow[] {
+  return repo.getPendingVerificationListings().map(toListingsRow);
+}
+
+export function buildVerifiedRemovedListings(repo: Repository): ListingsRow[] {
+  return repo.getVerifiedRemovedListings().map(toListingsRow);
 }
 
 export interface MapPoint {

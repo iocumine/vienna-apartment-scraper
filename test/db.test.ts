@@ -268,5 +268,18 @@ describe('repository: alerts dedup + map', () => {
     repo.upsertListing(listing({ id: 'a2' }));
     repo.db.prepare('UPDATE listings SET miss_count = 2 WHERE id = ?').run('a1');
     expect(repo.countPendingVerification()).toBe(1);
+    expect(repo.getPendingVerificationListings().map((r) => r.id)).toEqual(['a1']);
+  });
+
+  it('counts and lists listings removed after verification', () => {
+    const repo = makeRepo(() => '2026-06-01T12:00:00.000Z');
+    repo.upsertListing(listing({ id: 'gone' }));
+    repo.db.prepare(
+      `UPDATE listings SET is_active = 0, miss_count = 10, verification_miss_threshold = 5 WHERE id = ?`,
+    ).run('gone');
+    repo.upsertListing(listing({ id: 'other' }));
+    repo.deactivateListing('other');
+    expect(repo.countVerifiedRemoved()).toBe(1);
+    expect(repo.getVerifiedRemovedListings().map((r) => r.id)).toEqual(['gone']);
   });
 });

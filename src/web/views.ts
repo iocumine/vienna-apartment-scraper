@@ -69,6 +69,7 @@ function layout(
     a.card-link { text-decoration: none; color: inherit; cursor: pointer; }
     a.card-link:hover { background: #eef2ff; border-color: #c7d2fe; }
     .badge-pending { font-size: 11px; color: #92400e; background: #fef3c7; padding: 2px 6px; border-radius: 4px; margin-left: 6px; white-space: nowrap; }
+    .card-rows { display: flex; flex-direction: column; gap: 16px; }
     .cards { display: flex; gap: 16px; flex-wrap: wrap; }
     .card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; min-width: 140px; }
     .card .n { font-size: 28px; font-weight: 700; }
@@ -220,15 +221,23 @@ export function renderOverview(summary: Summary): string {
       <td data-sort-value="${d.active_count}">${d.active_count}</td></tr>`,
     )
     .join('');
+  const requestStatsTiles = summary.showWillhabenRequestStats
+    ? `<a class="card card-link" href="/willhaben-requests" title="View Willhaben HTTP requests in the rolling last 60 seconds"><div class="n">${summary.willhabenRequestsLast60s}</div>requests last 60s</a>
+      <div class="card" title="Configured willhaben request cap per rolling 60-second window"><div class="n">${summary.willhabenRequestsPerMinute}</div>max requests / min</div>`
+    : '';
   const body = `
     <h1>Overview</h1>
-    <div class="cards">
-      <a class="card card-link" href="/listings" title="View all active listings"><div class="n">${summary.activeCount}</div>active listings</a>
-      <a class="card card-link" href="/new-listings" title="View new listings (last 24h)"><div class="n">${summary.newCount}</div>new in last 24h</a>
-      <div class="card"><div class="n">${summary.districts.length}</div>districts tracked</div>
-      <a class="card card-link" href="/willhaben-requests" title="View Willhaben HTTP requests in the rolling last 60 seconds"><div class="n">${summary.willhabenRequestsLast60s}</div>requests last 60s</a>
-      <div class="card" title="Configured willhaben request cap per rolling 60-second window"><div class="n">${summary.willhabenRequestsPerMinute}</div>max requests / min</div>
-      <a class="card card-link" href="/listings" title="Active listings not seen in recent polls"><div class="n">${summary.pendingVerificationCount}</div>pending verification</a>
+    <div class="card-rows">
+      <div class="cards">
+        <a class="card card-link" href="/listings" title="View all active listings"><div class="n">${summary.activeCount}</div>active listings</a>
+        <a class="card card-link" href="/new-listings" title="View new listings (last 24h)"><div class="n">${summary.newCount}</div>new in last 24h</a>
+        <a class="card card-link" href="/removed-listings" title="Listings removed after willhaben verification"><div class="n">${summary.verifiedRemovedCount}</div>removed after verification</a>
+        <a class="card card-link" href="/pending-verification" title="Active listings not seen in recent polls"><div class="n">${summary.pendingVerificationCount}</div>pending verification</a>
+      </div>
+      <div class="cards">
+        <div class="card"><div class="n">${summary.districts.length}</div>districts tracked</div>
+        ${requestStatsTiles}
+      </div>
     </div>
     <h2>Median sqm price by district (monitored period)</h2>
     <table id="district-stats" class="sortable">
@@ -439,6 +448,36 @@ export function renderNewListings(
     docTitle: 'Vienna Apartments - New listings',
     heading: 'New listings (last 24h)',
     emptyText: 'No new listings in the last 24h',
+    listings,
+    initialDistrict: initialDistrict ?? null,
+    uiAlerts,
+  });
+}
+
+export function renderPendingVerificationListings(
+  listings: ListingsRow[],
+  initialDistrict?: number | null,
+  uiAlerts?: UiAlerts,
+): string {
+  return listingsPage({
+    docTitle: 'Vienna Apartments - Pending verification',
+    heading: 'Pending verification',
+    emptyText: 'No listings pending verification',
+    listings,
+    initialDistrict: initialDistrict ?? null,
+    uiAlerts,
+  });
+}
+
+export function renderVerifiedRemovedListings(
+  listings: ListingsRow[],
+  initialDistrict?: number | null,
+  uiAlerts?: UiAlerts,
+): string {
+  return listingsPage({
+    docTitle: 'Vienna Apartments - Removed listings',
+    heading: 'Removed after verification',
+    emptyText: 'No listings removed after verification',
     listings,
     initialDistrict: initialDistrict ?? null,
     uiAlerts,
