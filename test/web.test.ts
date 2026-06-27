@@ -177,8 +177,13 @@ describe('views render valid html', () => {
     expect(trends).toContain('<option value="ma5">5-day moving average</option>');
     expect(trends).toContain('<option value="ma20">20-day moving average</option>');
     expect(trends).toContain('buildMainDatasets');
-    // Hovering a line emphasizes it by thickening its stroke.
+    // Hovering a line emphasizes it by thickening its stroke and bolding its legend label.
     expect(trends).toContain('emphasizeHovered');
+    expect(trends).toContain('drawBoldLegendLabel');
+    expect(trends).toContain('helpers.toFont');
+    expect(trends).toContain('helpers.renderText');
+    expect(trends).toContain('legendBold');
+    expect(trends).toContain("_hoveredDatasetIndex");
     // The selected main series persists across refreshes.
     expect(trends).toContain('vienna.trends.mainSeries');
     expect(trends).toContain('id="district-select"');
@@ -186,11 +191,21 @@ describe('views render valid html', () => {
     expect(trends).toContain('<option value="7">District 7</option>');
     expect(trends).toContain('MA 5d');
     expect(trends).toContain('MA 20d');
-    // District tiles persist via localStorage and expose a close (x) button.
+    // District tiles persist via localStorage and expose maximize/restore/close controls.
     expect(trends).toContain('localStorage');
     expect(trends).toContain('loadSavedDistricts');
+    expect(trends).toContain("className = 'tile-actions'");
+    expect(trends).toContain("className = 'maximize'");
+    expect(trends).toContain("className = 'restore'");
     expect(trends).toContain("className = 'close'");
+    expect(trends).toContain('Maximize District ');
+    expect(trends).toContain('Restore District ');
     expect(trends).toContain('Remove District ');
+    expect(trends).toContain('function maximizeTile');
+    expect(trends).toContain('function restoreTile');
+    expect(trends).toContain('tile-maximized');
+    expect(trends).toContain('button[hidden] { display: none !important; }');
+    expect(trends).toContain("e.key !== 'Escape'");
 
     const map = renderMap(buildMapData(repo));
     expect(map).toContain('leaflet');

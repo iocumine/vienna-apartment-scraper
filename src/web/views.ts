@@ -35,7 +35,7 @@ function layout(title: string, nav: string, body: string): string {
     .card .n { font-size: 28px; font-weight: 700; }
     #map { height: 600px; border-radius: 8px; }
     .tile { position: relative; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 0 0 16px; }
-    .tile h2 { margin: 0 28px 12px 0; font-size: 16px; }
+    .tile h2 { margin: 0 68px 12px 0; font-size: 16px; }
     .tile .head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
     .series-toggle { display: flex; align-items: center; gap: 6px; font-size: 14px; }
     .series-toggle select { font-size: 14px; padding: 6px 8px; border-radius: 6px; border: 1px solid #d1d5db; }
@@ -44,8 +44,20 @@ function layout(title: string, nav: string, body: string): string {
     .controls select, .controls button { font-size: 16px; padding: 8px 10px; border-radius: 6px; border: 1px solid #d1d5db; }
     .controls button { background: #2563eb; color: #fff; border-color: #2563eb; cursor: pointer; }
     .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
-    .tile .close { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border: 1px solid #e5e7eb; color: #374151; border-radius: 6px; cursor: pointer; font-size: 18px; line-height: 1; }
-    .tile .close:hover { background: #ef4444; border-color: #ef4444; color: #fff; }
+    .tile .tile-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; z-index: 1; }
+    .tile .tile-actions button { width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border: 1px solid #e5e7eb; color: #374151; border-radius: 6px; cursor: pointer; font-size: 16px; line-height: 1; }
+    .tile .tile-actions button[hidden] { display: none !important; }
+    .tile .tile-actions button:hover { background: #e5e7eb; }
+    .tile .tile-actions .close:hover { background: #ef4444; border-color: #ef4444; color: #fff; }
+    body.tile-maximized { overflow: hidden; }
+    body.tile-maximized header { position: relative; z-index: 1001; }
+    body.tile-maximized main > h1,
+    body.tile-maximized main > section.tile:not(.district-tile.maximized),
+    body.tile-maximized main > p { display: none; }
+    body.tile-maximized #tiles .district-tile:not(.maximized) { display: none; }
+    body.tile-maximized #tiles { display: block; }
+    .tile.district-tile.maximized { position: fixed; top: 49px; left: 0; right: 0; bottom: 0; z-index: 1000; max-width: none; margin: 0; border-radius: 0; padding: 20px; }
+    .tile.district-tile.maximized .chart-wrap { height: calc(100vh - 100px); }
     @media (max-width: 640px) {
       main { padding: 12px; }
       .chart-wrap { height: 260px; }
@@ -361,12 +373,67 @@ export function renderTrends(trends: Trends): string {
 
       const BASE_WIDTH = 2, EMPHASIZED_WIDTH = 4, DIMMED_WIDTH = 1;
 
-      // Thicken the line nearest the cursor and thin the rest; reset when the
-      // pointer is not over any line (including on mouseout).
+      // Bold the hovered legend label text by repainting it after Chart.js draws the legend.
+      function drawBoldLegendLabel(chart) {
+        const hovered = chart._hoveredDatasetIndex;
+        if (hovered == null || hovered < 0) return;
+        const legend = chart.legend;
+        if (!legend || !legend.options.display || !legend.legendItems || !legend.legendHitBoxes) return;
+
+        const itemIndex = legend.legendItems.findIndex(function (it) { return it.datasetIndex === hovered; });
+        if (itemIndex < 0) return;
+        const item = legend.legendItems[itemIndex];
+        const hitbox = legend.legendHitBoxes[itemIndex];
+        if (!item || !hitbox || !item.text) return;
+
+        const helpers = Chart.helpers;
+        const labelOpts = legend.options.labels;
+        const labelFont = helpers.toFont(labelOpts.font);
+        const boldFont = helpers.toFont({
+          size: labelFont.size,
+          family: labelFont.family,
+          style: labelFont.style,
+          lineHeight: labelFont.lineHeight,
+          weight: 'bold',
+        });
+        const boxWidth = labelOpts.boxWidth || 40;
+        const itemHeight = hitbox.height;
+        const halfFontSize = labelFont.size / 2;
+        const rtlHelper = helpers.getRtlAdapter(legend.options.rtl, legend.left, legend.width);
+        const textAlign = item.textAlign || labelOpts.textAlign || 'left';
+        let textX = hitbox.left + boxWidth + halfFontSize;
+        textX = helpers._textX(textAlign, textX, hitbox.left + hitbox.width, legend.options.rtl);
+        textX = rtlHelper.x(textX);
+        const textY = hitbox.top + itemHeight / 2;
+        const colorOpt = labelOpts.color;
+        const textColor = typeof colorOpt === 'function'
+          ? colorOpt({ chart: chart, type: 'legend' })
+          : (colorOpt || chart.options.color || '#666');
+
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.font = boldFont.string;
+        const textWidth = ctx.measureText(String(item.text)).width;
+        const padX = 4;
+        const padY = 3;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(textX - padX, textY - labelFont.size / 2 - padY, textWidth + padX * 2, labelFont.size + padY * 2);
+        helpers.renderText(ctx, item.text, textX, textY, boldFont, {
+          color: textColor,
+          textAlign: rtlHelper.textAlign(textAlign),
+        });
+        ctx.restore();
+      }
+
+      // Thicken the hovered line, thin the rest, and bold the matching legend label.
       function emphasizeHovered(chart, evt) {
         const els = chart.getElementsAtEventForMode(evt.native || evt, 'nearest', { intersect: false }, true);
         const hovered = els.length ? els[0].datasetIndex : -1;
         let changed = false;
+        if (chart._hoveredDatasetIndex !== hovered) {
+          chart._hoveredDatasetIndex = hovered;
+          changed = true;
+        }
         chart.data.datasets.forEach(function (ds, i) {
           const target = hovered === -1 ? BASE_WIDTH : (i === hovered ? EMPHASIZED_WIDTH : DIMMED_WIDTH);
           if (ds.borderWidth !== target) { ds.borderWidth = target; changed = true; }
@@ -381,6 +448,11 @@ export function renderTrends(trends: Trends): string {
           parsing: false,
           interaction: { mode: 'index', intersect: false },
           onHover: function (evt, _active, chart) { emphasizeHovered(chart, evt); },
+          plugins: {
+            legendBold: {
+              afterDraw: function (chart) { drawBoldLegendLabel(chart); },
+            },
+          },
           scales: {
             x: { type: 'category', labels: labels },
             y: { title: { display: true, text: yTitle } }
@@ -423,6 +495,7 @@ export function renderTrends(trends: Trends): string {
         options: baseOptions('EUR/m2')
       });
       mainSelect.addEventListener('change', function (e) {
+        mainChart._hoveredDatasetIndex = -1;
         mainChart.data.datasets = buildMainDatasets(e.target.value);
         mainChart.update();
         try { localStorage.setItem(MAIN_SERIES_KEY, e.target.value); }
@@ -445,11 +518,37 @@ export function renderTrends(trends: Trends): string {
         catch (e) { /* storage unavailable; ignore */ }
       }
 
+      function resizeChart(district) {
+        if (charts[district]) charts[district].resize();
+      }
+
+      function restoreTile(tile) {
+        tile.classList.remove('maximized');
+        document.body.classList.remove('tile-maximized');
+        const maxBtn = tile.querySelector('.maximize');
+        const restBtn = tile.querySelector('.restore');
+        if (maxBtn) maxBtn.hidden = false;
+        if (restBtn) restBtn.hidden = true;
+        resizeChart(Number(tile.dataset.district));
+      }
+
+      function maximizeTile(tile) {
+        const current = document.querySelector('.tile.district-tile.maximized');
+        if (current && current !== tile) restoreTile(current);
+        tile.classList.add('maximized');
+        document.body.classList.add('tile-maximized');
+        const maxBtn = tile.querySelector('.maximize');
+        const restBtn = tile.querySelector('.restore');
+        if (maxBtn) maxBtn.hidden = true;
+        if (restBtn) restBtn.hidden = false;
+        resizeChart(Number(tile.dataset.district));
+      }
+
       function addTile(district) {
         const s = seriesByDistrict[district];
         if (!s || charts[district]) return; // unknown or already shown
         const tile = document.createElement('section');
-        tile.className = 'tile';
+        tile.className = 'tile district-tile';
         tile.dataset.district = String(district);
 
         const head = document.createElement('div');
@@ -458,23 +557,52 @@ export function renderTrends(trends: Trends): string {
         h2.textContent = 'District ' + district + ' \u2014 median & moving averages';
         head.appendChild(h2);
 
+        const actions = document.createElement('div');
+        actions.className = 'tile-actions';
+
+        const maximize = document.createElement('button');
+        maximize.className = 'maximize';
+        maximize.type = 'button';
+        maximize.setAttribute('aria-label', 'Maximize District ' + district + ' tile');
+        maximize.textContent = '\u26f6';
+        maximize.addEventListener('click', function (e) {
+          e.stopPropagation();
+          maximizeTile(tile);
+        });
+
+        const restore = document.createElement('button');
+        restore.className = 'restore';
+        restore.type = 'button';
+        restore.hidden = true;
+        restore.setAttribute('aria-label', 'Restore District ' + district + ' tile');
+        restore.textContent = '\u2190';
+        restore.addEventListener('click', function (e) {
+          e.stopPropagation();
+          restoreTile(tile);
+        });
+
         const close = document.createElement('button');
         close.className = 'close';
         close.type = 'button';
         close.setAttribute('aria-label', 'Remove District ' + district + ' tile');
         close.textContent = '\u00d7';
         close.addEventListener('click', function () {
+          if (tile.classList.contains('maximized')) document.body.classList.remove('tile-maximized');
           if (charts[district]) { charts[district].destroy(); delete charts[district]; }
           tile.remove();
           saveDistricts();
         });
+
+        actions.appendChild(maximize);
+        actions.appendChild(restore);
+        actions.appendChild(close);
 
         const wrap = document.createElement('div');
         wrap.className = 'chart-wrap';
         const canvas = document.createElement('canvas');
         wrap.appendChild(canvas);
 
-        tile.appendChild(close);
+        tile.appendChild(actions);
         tile.appendChild(head);
         tile.appendChild(wrap);
         tilesEl.appendChild(tile);
@@ -496,6 +624,14 @@ export function renderTrends(trends: Trends): string {
       document.getElementById('add-tile').addEventListener('click', function () {
         const sel = document.getElementById('district-select');
         if (sel && sel.value) addTile(Number(sel.value));
+      });
+
+      document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        const tile = document.querySelector('.tile.district-tile.maximized');
+        if (!tile) return;
+        e.preventDefault();
+        restoreTile(tile);
       });
 
       // Restore previously configured tiles.
