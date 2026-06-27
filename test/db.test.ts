@@ -113,6 +113,28 @@ describe('repository: stats aggregation', () => {
     repo.snapshotDailyStats();
     expect(repo.getDistrictStatsHistory()).toHaveLength(1);
   });
+
+  it('computes period medians from daily snapshot history', () => {
+    const repo = makeRepo(() => '2026-06-10T12:00:00.000Z');
+    repo.upsertDailyStats({ date: '2026-06-01', district: 7, median_price_per_m2: 20, avg_price_per_m2: 20, active_count: 3 });
+    repo.upsertDailyStats({ date: '2026-06-02', district: 7, median_price_per_m2: 30, avg_price_per_m2: 30, active_count: 4 });
+    repo.upsertDailyStats({ date: '2026-06-01', district: 9, median_price_per_m2: 40, avg_price_per_m2: 40, active_count: 2 });
+    // Current active listings: district 7 has two, district 9 has none in live data.
+    repo.upsertListing(listing({ id: 'a1', district: 7, price: 1000, area_m2: 50 }));
+    repo.upsertListing(listing({ id: 'a2', district: 7, price: 1500, area_m2: 50 }));
+
+    const stats = repo.computePeriodDistrictStats();
+    expect(stats).toEqual([
+      { district: 7, avg_price_per_m2: 25, median_price_per_m2: 25, active_count: 2 },
+      { district: 9, avg_price_per_m2: 40, median_price_per_m2: 40, active_count: 0 },
+    ]);
+  });
+
+  it('falls back to live stats when no daily history exists yet', () => {
+    const repo = makeRepo(() => '2026-06-01T12:00:00.000Z');
+    repo.upsertListing(listing({ id: 'a1', district: 7, price: 1000, area_m2: 50 }));
+    expect(repo.computePeriodDistrictStats()).toEqual(repo.computeCurrentDistrictStats());
+  });
 });
 
 describe('repository: baselines', () => {

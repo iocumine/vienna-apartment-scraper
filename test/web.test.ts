@@ -20,14 +20,18 @@ function listing(over: Partial<NormalizedListing> = {}): NormalizedListing {
 const config = {} as AppConfig;
 
 describe('buildSummary', () => {
-  it('counts active and last-24h listings plus district stats', () => {
+  it('counts active and last-24h listings plus period district stats', () => {
     const repo = repoAt('2026-06-06T12:00:00.000Z');
     repo.upsertListing(listing({ id: 'a1', district: 7, price: 1000, area_m2: 50 }));
     repo.upsertListing(listing({ id: 'a2', district: 9, price: 1500, area_m2: 50 }));
+    repo.upsertDailyStats({ date: '2026-06-01', district: 7, median_price_per_m2: 18, avg_price_per_m2: 18, active_count: 1 });
+    repo.upsertDailyStats({ date: '2026-06-02', district: 7, median_price_per_m2: 22, avg_price_per_m2: 22, active_count: 1 });
     const summary = buildSummary(repo, config, () => '2026-06-06T12:00:00.000Z');
     expect(summary.activeCount).toBe(2);
     expect(summary.newCount).toBe(2);
     expect(summary.districts.map((d) => d.district)).toEqual([7, 9]);
+    expect(summary.districts[0]).toMatchObject({ district: 7, median_price_per_m2: 20, active_count: 1 });
+    expect(summary.districts[1]).toMatchObject({ district: 9, median_price_per_m2: 30, active_count: 1 });
   });
 });
 
@@ -133,6 +137,8 @@ describe('views render valid html', () => {
     // District stats table is sortable by clicking column headers.
     expect(overview).toContain('id="district-stats"');
     expect(overview).toContain('class="sortable"');
+    expect(overview).toContain('data-href="/listings?district=7"');
+    expect(overview).toContain('class="row-link"');
     expect(overview).toContain('data-sort-value="7"');
     expect(overview).toContain('function sortBy');
 
@@ -143,6 +149,7 @@ describe('views render valid html', () => {
     // Per-column filters: title text, district/rooms selects, numeric comparators.
     expect(allListings).toContain('id="f-title"');
     expect(allListings).toContain('id="f-district"');
+    expect(allListings).toContain('function initFromQuery');
     expect(allListings).toContain('id="f-rooms"');
     expect(allListings).toContain('id="f-price-op"');
     expect(allListings).toContain('id="f-price-val"');

@@ -6,7 +6,7 @@ export interface Summary {
   generatedAt: string;
   activeCount: number;
   newCount: number;
-  districts: ReturnType<Repository['computeCurrentDistrictStats']>;
+  districts: ReturnType<Repository['computePeriodDistrictStats']>;
   newListings: ListingRow[];
 }
 
@@ -22,7 +22,7 @@ export function buildSummary(
     generatedAt: nowIso,
     activeCount: repo.countActive(),
     newCount: newListings.length,
-    districts: repo.computeCurrentDistrictStats(),
+    districts: repo.computePeriodDistrictStats(),
     newListings,
   };
 }

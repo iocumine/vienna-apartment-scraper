@@ -21,6 +21,8 @@ function layout(title: string, nav: string, body: string): string {
     table.sortable thead tr:first-child th { cursor: pointer; user-select: none; white-space: nowrap; }
     table.sortable thead tr:first-child th:hover { background: #e5e7eb; }
     table.sortable th .arrow { color: #2563eb; font-size: 12px; }
+    tr.row-link { cursor: pointer; }
+    tr.row-link:hover td { background: #eef2ff; }
     tr.filters th { background: #fff; font-weight: 400; cursor: auto; vertical-align: top; }
     tr.filters input, tr.filters select { width: 100%; box-sizing: border-box; font-size: 13px; padding: 5px; border: 1px solid #d1d5db; border-radius: 6px; }
     .cmp { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
@@ -152,7 +154,7 @@ function sortableScript(): string {
 export function renderOverview(summary: Summary): string {
   const districtRows = summary.districts
     .map(
-      (d) => `<tr>
+      (d) => `<tr class="row-link" data-href="/listings?district=${d.district}" tabindex="0" role="link" aria-label="View active listings in district ${d.district}">
       <td data-sort-value="${d.district}">${d.district}</td>
       <td data-sort-value="${d.median_price_per_m2 ?? ''}">${escapeHtml(eur(d.median_price_per_m2))}</td>
       <td data-sort-value="${d.avg_price_per_m2 ?? ''}">${escapeHtml(eur(d.avg_price_per_m2))}</td>
@@ -166,7 +168,7 @@ export function renderOverview(summary: Summary): string {
       <a class="card card-link" href="/new-listings" title="View new listings (last 24h)"><div class="n">${summary.newCount}</div>new in last 24h</a>
       <div class="card"><div class="n">${summary.districts.length}</div>districts tracked</div>
     </div>
-    <h2>Current sqm price by district</h2>
+    <h2>Median sqm price by district (monitored period)</h2>
     <table id="district-stats" class="sortable">
       <thead><tr>
         <th data-type="num">District<span class="arrow"></span></th>
@@ -175,7 +177,21 @@ export function renderOverview(summary: Summary): string {
         <th data-type="num">Active<span class="arrow"></span></th>
       </tr></thead>
     <tbody>${districtRows || '<tr><td colspan="4">No data yet</td></tr>'}</tbody></table>
-    ${sortableScript()}`;
+    ${sortableScript()}
+    <script>
+      (function () {
+        document.querySelectorAll('#district-stats tbody tr.row-link').forEach(function (row) {
+          function go() {
+            const href = row.getAttribute('data-href');
+            if (href) window.location.href = href;
+          }
+          row.addEventListener('click', go);
+          row.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); }
+          });
+        });
+      })();
+    </script>`;
   return layout('Vienna Apartments - Overview', NAV, body);
 }
 
@@ -271,6 +287,15 @@ function listingsPage({ docTitle, heading, emptyText, listings }: ListingsPageOp
           f[id].addEventListener('input', apply);
           f[id].addEventListener('change', apply);
         });
+        (function initFromQuery() {
+          const district = new URLSearchParams(window.location.search).get('district');
+          if (!district) return;
+          const n = Number(district);
+          if (!Number.isFinite(n)) return;
+          const sel = f['f-district'];
+          const match = Array.prototype.find.call(sel.options, function (o) { return o.value === String(n); });
+          if (match) sel.value = String(n);
+        })();
         apply();
       })();
     </script>`;

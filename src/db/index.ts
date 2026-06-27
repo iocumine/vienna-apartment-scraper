@@ -138,6 +138,49 @@ export function createRepository(db: DB, { clock = nowIso }: RepositoryOptions =
       .sort((a, b) => a.district - b.district);
   }
 
+  // Aggregate daily snapshot history into per-district period medians. Less volatile
+  // than a single day's active listings. Active count still reflects current listings.
+  function computePeriodDistrictStats(): DistrictStat[] {
+    const rows = db
+      .prepare(
+        `SELECT district, avg_price_per_m2, median_price_per_m2 FROM district_daily_stats`,
+      )
+      .all() as Array<{
+      district: number;
+      avg_price_per_m2: number | null;
+      median_price_per_m2: number | null;
+    }>;
+    const byDistrict = new Map<number, { avgs: number[]; medians: number[] }>();
+    for (const r of rows) {
+      if (!byDistrict.has(r.district)) byDistrict.set(r.district, { avgs: [], medians: [] });
+      const bucket = byDistrict.get(r.district)!;
+      if (r.median_price_per_m2 !== null && Number.isFinite(r.median_price_per_m2)) {
+        bucket.medians.push(r.median_price_per_m2);
+      }
+      if (r.avg_price_per_m2 !== null && Number.isFinite(r.avg_price_per_m2)) {
+        bucket.avgs.push(r.avg_price_per_m2);
+      }
+    }
+
+    const currentStats = computeCurrentDistrictStats();
+    if (byDistrict.size === 0) return currentStats;
+
+    const stats = [...byDistrict.entries()]
+      .map(([district, { avgs, medians }]) => ({
+        district,
+        avg_price_per_m2: average(avgs),
+        median_price_per_m2: median(medians),
+        active_count: currentStats.find((s) => s.district === district)?.active_count ?? 0,
+      }))
+      .sort((a, b) => a.district - b.district);
+
+    const seen = new Set(stats.map((s) => s.district));
+    for (const live of currentStats) {
+      if (!seen.has(live.district)) stats.push(live);
+    }
+    return stats.sort((a, b) => a.district - b.district);
+  }
+
   const upsertDailyStatsStmt = db.prepare(`
     INSERT INTO district_daily_stats (date, district, avg_price_per_m2, median_price_per_m2, active_count)
     VALUES (@date, @district, @avg_price_per_m2, @median_price_per_m2, @active_count)
@@ -243,6 +286,7 @@ export function createRepository(db: DB, { clock = nowIso }: RepositoryOptions =
     getListingById,
     getNewListingsSince,
     computeCurrentDistrictStats,
+    computePeriodDistrictStats,
     upsertDailyStats,
     snapshotDailyStats,
     getDistrictStatsHistory,
