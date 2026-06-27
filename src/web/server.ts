@@ -1,6 +1,18 @@
 import express, { type Express } from 'express';
-import { buildSummary, buildTrends, buildMapData, buildActiveListings } from './data.js';
-import { renderOverview, renderTrends, renderMap, renderListings } from './views.js';
+import {
+  buildSummary,
+  buildTrends,
+  buildMapData,
+  buildActiveListings,
+  buildNewListings,
+} from './data.js';
+import {
+  renderOverview,
+  renderTrends,
+  renderMap,
+  renderListings,
+  renderNewListings,
+} from './views.js';
 import type { Repository } from '../db/index.js';
 import type { AppConfig } from '../types.js';
 
@@ -14,6 +26,10 @@ export function createServer(repo: Repository, config: AppConfig): Express {
 
   app.get('/listings', (_req, res) => {
     res.send(renderListings(buildActiveListings(repo)));
+  });
+
+  app.get('/new-listings', (_req, res) => {
+    res.send(renderNewListings(buildNewListings(repo)));
   });
 
   app.get('/trends', (_req, res) => {

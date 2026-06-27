@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import Database from 'better-sqlite3';
 import { createRepository, type Repository } from '../src/db/index.js';
-import { buildSummary, buildTrends, buildMapData, buildActiveListings } from '../src/web/data.js';
-import { renderOverview, renderTrends, renderMap, renderListings } from '../src/web/views.js';
+import { buildSummary, buildTrends, buildMapData, buildActiveListings, buildNewListings } from '../src/web/data.js';
+import { renderOverview, renderTrends, renderMap, renderListings, renderNewListings } from '../src/web/views.js';
 import type { AppConfig, NormalizedListing } from '../src/types.js';
 
 function repoAt(now: string): Repository {
@@ -87,6 +87,20 @@ describe('buildActiveListings', () => {
   });
 });
 
+describe('buildNewListings', () => {
+  it('returns only listings first seen in the last 24h, mapped to the table shape', () => {
+    const clock = { now: '2026-06-04T12:00:00.000Z' };
+    const repo = createRepository(new Database(':memory:'), { clock: () => clock.now });
+    repo.upsertListing(listing({ id: 'old', district: 7, price: 1000, area_m2: 50 }));
+    clock.now = '2026-06-06T11:00:00.000Z';
+    repo.upsertListing(listing({ id: 'fresh', district: 9, price: 1500, area_m2: 50 }));
+
+    const news = buildNewListings(repo, () => '2026-06-06T12:00:00.000Z');
+    expect(news.map((l) => l.id)).toEqual(['fresh']); // 'old' first seen >24h ago
+    expect(news[0]).toMatchObject({ district: 9, price: 1500 });
+  });
+});
+
 describe('buildMapData', () => {
   it('tags listings as below/above district median and skips ungeocoded', () => {
     const repo = repoAt('2026-06-06T12:00:00.000Z');
@@ -112,18 +126,14 @@ describe('views render valid html', () => {
     const overview = renderOverview(buildSummary(repo, config, () => '2026-06-06T12:00:00.000Z'));
     expect(overview).toContain('<!doctype html>');
     expect(overview).toContain('Overview');
-    // New listings table is sortable by clicking column headers.
-    expect(overview).toContain('id="listings"');
-    expect(overview).toContain('class="sortable"');
-    expect(overview).toContain('data-type="num"');
-    expect(overview).toContain('data-sort-value=');
-    expect(overview).toContain('function sortBy');
-    // The active-listings tile links to the standalone listings page.
+    // Overview no longer embeds the new-listings table; both tiles link out.
+    expect(overview).not.toContain('id="listings-table"');
     expect(overview).toContain('href="/listings"');
+    expect(overview).toContain('href="/new-listings"');
 
     const allListings = renderListings(buildActiveListings(repo));
     expect(allListings).toContain('Active listings');
-    expect(allListings).toContain('id="active-listings"');
+    expect(allListings).toContain('id="listings-table"');
     expect(allListings).toContain('class="sortable"');
     // Per-column filters: title text, district/rooms selects, numeric comparators.
     expect(allListings).toContain('id="f-title"');
@@ -135,6 +145,14 @@ describe('views render valid html', () => {
     expect(allListings).toContain('id="f-area-op"');
     expect(allListings).toContain('<option value="7">7</option>'); // district option
     expect(allListings).toContain('function matches');
+
+    // New listings reuse the same filterable/sortable table page.
+    const newListings = renderNewListings(buildNewListings(repo, () => '2026-06-06T12:00:00.000Z'));
+    expect(newListings).toContain('New listings (last 24h)');
+    expect(newListings).toContain('id="listings-table"');
+    expect(newListings).toContain('id="f-district"');
+    expect(newListings).toContain('id="f-price-op"');
+    expect(newListings).toContain('function matches');
 
     const trends = renderTrends(buildTrends(repo));
     expect(trends).toContain('chart.js');
@@ -173,5 +191,8 @@ describe('views render valid html', () => {
     expect(overview).toContain('No data yet');
     expect(renderTrends(buildTrends(repo))).toContain('No daily stats recorded yet');
     expect(renderListings(buildActiveListings(repo))).toContain('No active listings');
+    expect(renderNewListings(buildNewListings(repo, () => '2026-06-06T12:00:00.000Z'))).toContain(
+      'No new listings',
+    );
   });
 });

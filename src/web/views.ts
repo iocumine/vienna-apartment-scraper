@@ -150,7 +150,6 @@ function sortableScript(): string {
 }
 
 export function renderOverview(summary: Summary): string {
-  const rows = summary.newListings.map(listingRowHtml).join('');
   const districtRows = summary.districts
     .map(
       (d) => `<tr><td>${d.district}</td><td>${escapeHtml(eur(d.median_price_per_m2))}</td>
@@ -161,20 +160,25 @@ export function renderOverview(summary: Summary): string {
     <h1>Overview</h1>
     <div class="cards">
       <a class="card card-link" href="/listings" title="View all active listings"><div class="n">${summary.activeCount}</div>active listings</a>
-      <div class="card"><div class="n">${summary.newCount}</div>new in last 24h</div>
+      <a class="card card-link" href="/new-listings" title="View new listings (last 24h)"><div class="n">${summary.newCount}</div>new in last 24h</a>
       <div class="card"><div class="n">${summary.districts.length}</div>districts tracked</div>
     </div>
     <h2>Current sqm price by district</h2>
     <table><thead><tr><th>District</th><th>Median EUR/m&sup2;</th><th>Avg EUR/m&sup2;</th><th>Active</th></tr></thead>
-    <tbody>${districtRows || '<tr><td colspan="4">No data yet</td></tr>'}</tbody></table>
-    <h2>New listings (last 24h)</h2>
-    <table id="listings" class="sortable"><thead>${LISTING_HEADERS}</thead>
-    <tbody>${rows || '<tr><td colspan="6">Nothing new</td></tr>'}</tbody></table>
-    ${sortableScript()}`;
+    <tbody>${districtRows || '<tr><td colspan="4">No data yet</td></tr>'}</tbody></table>`;
   return layout('Vienna Apartments - Overview', NAV, body);
 }
 
-export function renderListings(listings: ListingsRow[]): string {
+interface ListingsPageOptions {
+  docTitle: string;
+  heading: string;
+  emptyText: string;
+  listings: ListingsRow[];
+}
+
+// Shared filterable + sortable listings page. Used for both the full active set
+// and the last-24h new listings so the table/filter logic lives in one place.
+function listingsPage({ docTitle, heading, emptyText, listings }: ListingsPageOptions): string {
   const districts = [...new Set(listings.map((l) => l.district).filter((d): d is number => d != null))].sort(
     (a, b) => a - b,
   );
@@ -190,9 +194,9 @@ export function renderListings(listings: ListingsRow[]): string {
       </span>`;
   const rows = listings.map(listingRowHtml).join('');
   const body = `
-    <h1>Active listings</h1>
+    <h1>${escapeHtml(heading)}</h1>
     <p id="count"></p>
-    <table id="active-listings" class="sortable">
+    <table id="listings-table" class="sortable">
       <thead>
     ${LISTING_HEADERS}
         <tr class="filters">
@@ -204,12 +208,12 @@ export function renderListings(listings: ListingsRow[]): string {
           <th>${cmp('f-ppm2', 'EUR/m²')}</th>
         </tr>
       </thead>
-      <tbody>${rows || '<tr><td colspan="6">No active listings</td></tr>'}</tbody>
+      <tbody>${rows || `<tr><td colspan="6">${escapeHtml(emptyText)}</td></tr>`}</tbody>
     </table>
     ${sortableScript()}
     <script>
       (function () {
-        const table = document.getElementById('active-listings');
+        const table = document.getElementById('listings-table');
         const tbody = table.tBodies[0];
         const countEl = document.getElementById('count');
         const COLS = 6;
@@ -250,7 +254,7 @@ export function renderListings(listings: ListingsRow[]): string {
             row.style.display = ok ? '' : 'none';
             if (ok) shown++;
           });
-          countEl.textContent = 'Showing ' + shown + ' of ' + total + ' active listings';
+          countEl.textContent = 'Showing ' + shown + ' of ' + total + ' listings';
         }
         Object.keys(f).forEach(function (id) {
           if (!f[id]) return;
@@ -260,7 +264,25 @@ export function renderListings(listings: ListingsRow[]): string {
         apply();
       })();
     </script>`;
-  return layout('Vienna Apartments - Active listings', NAV, body);
+  return layout(docTitle, NAV, body);
+}
+
+export function renderListings(listings: ListingsRow[]): string {
+  return listingsPage({
+    docTitle: 'Vienna Apartments - Active listings',
+    heading: 'Active listings',
+    emptyText: 'No active listings',
+    listings,
+  });
+}
+
+export function renderNewListings(listings: ListingsRow[]): string {
+  return listingsPage({
+    docTitle: 'Vienna Apartments - New listings',
+    heading: 'New listings (last 24h)',
+    emptyText: 'No new listings in the last 24h',
+    listings,
+  });
 }
 
 export function renderTrends(trends: Trends): string {
