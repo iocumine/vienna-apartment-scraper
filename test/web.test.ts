@@ -85,6 +85,12 @@ describe('views render valid html', () => {
     const overview = renderOverview(buildSummary(repo, config, () => '2026-06-06T12:00:00.000Z'));
     expect(overview).toContain('<!doctype html>');
     expect(overview).toContain('Overview');
+    // New listings table is sortable by clicking column headers.
+    expect(overview).toContain('id="listings"');
+    expect(overview).toContain('class="sortable"');
+    expect(overview).toContain('data-type="num"');
+    expect(overview).toContain('data-sort-value=');
+    expect(overview).toContain('function sortBy');
 
     const trends = renderTrends(buildTrends(repo));
     expect(trends).toContain('chart.js');

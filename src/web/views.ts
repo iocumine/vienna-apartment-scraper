@@ -18,6 +18,9 @@ function layout(title: string, nav: string, body: string): string {
     table { border-collapse: collapse; width: 100%; margin: 12px 0; }
     th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 14px; }
     th { background: #f3f4f6; }
+    table.sortable th { cursor: pointer; user-select: none; white-space: nowrap; }
+    table.sortable th:hover { background: #e5e7eb; }
+    table.sortable th .arrow { color: #2563eb; font-size: 12px; }
     .cards { display: flex; gap: 16px; flex-wrap: wrap; }
     .card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; min-width: 140px; }
     .card .n { font-size: 28px; font-weight: 700; }
@@ -62,11 +65,11 @@ export function renderOverview(summary: Summary): string {
     .map(
       (l) => `<tr>
       <td><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.title ?? 'Untitled')}</a></td>
-      <td>${l.district ?? '?'}</td>
-      <td>${l.rooms ?? '?'}</td>
-      <td>${l.area_m2 ?? '?'}</td>
-      <td>${escapeHtml(eur(l.price))}</td>
-      <td>${escapeHtml(eur(l.price_per_m2))}</td>
+      <td data-sort-value="${l.district ?? ''}">${l.district ?? '?'}</td>
+      <td data-sort-value="${l.rooms ?? ''}">${l.rooms ?? '?'}</td>
+      <td data-sort-value="${l.area_m2 ?? ''}">${l.area_m2 ?? '?'}</td>
+      <td data-sort-value="${l.price ?? ''}">${escapeHtml(eur(l.price))}</td>
+      <td data-sort-value="${l.price_per_m2 ?? ''}">${escapeHtml(eur(l.price_per_m2))}</td>
     </tr>`,
     )
     .join('');
@@ -87,8 +90,65 @@ export function renderOverview(summary: Summary): string {
     <table><thead><tr><th>District</th><th>Median EUR/m&sup2;</th><th>Avg EUR/m&sup2;</th><th>Active</th></tr></thead>
     <tbody>${districtRows || '<tr><td colspan="4">No data yet</td></tr>'}</tbody></table>
     <h2>New listings (last 24h)</h2>
-    <table><thead><tr><th>Title</th><th>District</th><th>Rooms</th><th>m&sup2;</th><th>Price</th><th>EUR/m&sup2;</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="6">Nothing new</td></tr>'}</tbody></table>`;
+    <table id="listings" class="sortable"><thead><tr>
+      <th data-type="text">Title<span class="arrow"></span></th>
+      <th data-type="num">District<span class="arrow"></span></th>
+      <th data-type="num">Rooms<span class="arrow"></span></th>
+      <th data-type="num">m&sup2;<span class="arrow"></span></th>
+      <th data-type="num">Price<span class="arrow"></span></th>
+      <th data-type="num">EUR/m&sup2;<span class="arrow"></span></th>
+    </tr></thead>
+    <tbody>${rows || '<tr><td colspan="6">Nothing new</td></tr>'}</tbody></table>
+    <script>
+      (function () {
+        const table = document.getElementById('listings');
+        if (!table || !table.tHead) return;
+        const ths = table.tHead.rows[0].cells;
+        let sortCol = -1, sortDir = 1; // 1 asc, -1 desc
+
+        function cellValue(td, type) {
+          if (!td) return null;
+          const raw = td.getAttribute('data-sort-value');
+          const s = (raw !== null ? raw : td.textContent).trim();
+          if (s === '') return null;
+          if (type === 'num') { const n = Number(s); return Number.isFinite(n) ? n : null; }
+          return s.toLowerCase();
+        }
+
+        function updateArrows() {
+          for (let i = 0; i < ths.length; i++) {
+            const a = ths[i].querySelector('.arrow');
+            if (a) a.textContent = (i === sortCol) ? (sortDir === 1 ? ' \u25b2' : ' \u25bc') : '';
+          }
+        }
+
+        function sortBy(col) {
+          const type = ths[col].getAttribute('data-type') || 'text';
+          sortDir = (sortCol === col) ? -sortDir : 1;
+          sortCol = col;
+          const tbody = table.tBodies[0];
+          const rows = Array.prototype.slice.call(tbody.rows).filter(function (r) { return r.cells.length === ths.length; });
+          if (rows.length === 0) { updateArrows(); return; }
+          rows.sort(function (a, b) {
+            const av = cellValue(a.cells[col], type), bv = cellValue(b.cells[col], type);
+            if (av === null && bv === null) return 0;
+            if (av === null) return 1;   // empty values always sort last
+            if (bv === null) return -1;
+            if (av < bv) return -sortDir;
+            if (av > bv) return sortDir;
+            return 0;
+          });
+          rows.forEach(function (r) { tbody.appendChild(r); });
+          updateArrows();
+        }
+
+        for (let c = 0; c < ths.length; c++) {
+          (function (col) {
+            ths[col].addEventListener('click', function () { sortBy(col); });
+          })(c);
+        }
+      })();
+    </script>`;
   return layout('Vienna Apartments - Overview', NAV, body);
 }
 
