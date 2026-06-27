@@ -177,15 +177,25 @@ describe('views render valid html', () => {
     expect(trends).toContain('<option value="ma5">5-day moving average</option>');
     expect(trends).toContain('<option value="ma20">20-day moving average</option>');
     expect(trends).toContain('buildMainDatasets');
-    // Hovering a line emphasizes it by thickening its stroke and bolding its legend label.
+    // Hovering a line or legend label emphasizes it by thickening its stroke and bolding its legend label.
+    expect(trends).toContain('datasetIndexAtEvent');
+    expect(trends).toContain('setEmphasizedDataset');
+    expect(trends).toContain('legendItem.datasetIndex');
+    expect(trends).toContain('onLeave');
     expect(trends).toContain('emphasizeHovered');
     expect(trends).toContain('drawBoldLegendLabel');
     expect(trends).toContain('helpers.toFont');
     expect(trends).toContain('helpers.renderText');
     expect(trends).toContain('legendBold');
     expect(trends).toContain("_hoveredDatasetIndex");
-    // The selected main series persists across refreshes.
+    // The selected main series and hidden legend districts persist across refreshes.
     expect(trends).toContain('vienna.trends.mainSeries');
+    expect(trends).toContain('vienna.trends.mainHidden');
+    expect(trends).toContain('applyMainVisibility');
+    expect(trends).toContain('syncHiddenMainDistricts');
+    expect(trends).toContain('vienna.trends.tileHidden');
+    expect(trends).toContain('applyTileVisibility');
+    expect(trends).toContain('syncTileHiddenSeries');
     expect(trends).toContain('id="district-select"');
     expect(trends).toContain('id="add-tile"');
     expect(trends).toContain('<option value="7">District 7</option>');
@@ -194,6 +204,7 @@ describe('views render valid html', () => {
     // District tiles persist via localStorage and expose maximize/restore/close controls.
     expect(trends).toContain('localStorage');
     expect(trends).toContain('loadSavedDistricts');
+    expect(trends).toContain('insertTileSorted');
     expect(trends).toContain("className = 'tile-actions'");
     expect(trends).toContain("className = 'maximize'");
     expect(trends).toContain("className = 'restore'");

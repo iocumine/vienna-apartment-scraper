@@ -425,10 +425,13 @@ export function renderTrends(trends: Trends): string {
         ctx.restore();
       }
 
-      // Thicken the hovered line, thin the rest, and bold the matching legend label.
-      function emphasizeHovered(chart, evt) {
+      function datasetIndexAtEvent(chart, evt) {
         const els = chart.getElementsAtEventForMode(evt.native || evt, 'nearest', { intersect: false }, true);
-        const hovered = els.length ? els[0].datasetIndex : -1;
+        return els.length ? els[0].datasetIndex : -1;
+      }
+
+      function setEmphasizedDataset(chart, hovered) {
+        if (hovered == null || !Number.isFinite(hovered)) hovered = -1;
         let changed = false;
         if (chart._hoveredDatasetIndex !== hovered) {
           chart._hoveredDatasetIndex = hovered;
@@ -441,7 +444,25 @@ export function renderTrends(trends: Trends): string {
         if (changed) chart.update('none');
       }
 
-      function baseOptions(yTitle) {
+      // Thicken the hovered line, thin the rest, and bold the matching legend label.
+      function emphasizeHovered(chart, evt) {
+        setEmphasizedDataset(chart, datasetIndexAtEvent(chart, evt));
+      }
+
+      function baseOptions(yTitle, legendOverrides) {
+        const legend = {
+          onHover: function (_evt, legendItem, legend) {
+            if (legendItem && legendItem.datasetIndex != null) {
+              setEmphasizedDataset(legend.chart, legendItem.datasetIndex);
+            }
+          },
+          onLeave: function (_evt, _legendItem, legend) {
+            setEmphasizedDataset(legend.chart, -1);
+          },
+        };
+        if (legendOverrides) {
+          Object.keys(legendOverrides).forEach(function (k) { legend[k] = legendOverrides[k]; });
+        }
         return {
           responsive: true,
           maintainAspectRatio: false,
@@ -449,6 +470,7 @@ export function renderTrends(trends: Trends): string {
           interaction: { mode: 'index', intersect: false },
           onHover: function (evt, _active, chart) { emphasizeHovered(chart, evt); },
           plugins: {
+            legend: legend,
             legendBold: {
               afterDraw: function (chart) { drawBoldLegendLabel(chart); },
             },
@@ -480,6 +502,7 @@ export function renderTrends(trends: Trends): string {
         });
       }
       const MAIN_SERIES_KEY = 'vienna.trends.mainSeries';
+      const MAIN_HIDDEN_KEY = 'vienna.trends.mainHidden';
       const mainSelect = document.getElementById('main-series');
       const allowedSeries = ['median', 'ma5', 'ma20'];
       let savedSeries = 'median';
@@ -489,14 +512,60 @@ export function renderTrends(trends: Trends): string {
       } catch (e) { /* storage unavailable; use default */ }
       mainSelect.value = savedSeries;
 
+      function loadHiddenMainDistricts() {
+        try {
+          const arr = JSON.parse(localStorage.getItem(MAIN_HIDDEN_KEY) || '[]');
+          return Array.isArray(arr) ? arr.map(Number).filter(function (n) { return Number.isFinite(n); }) : [];
+        } catch (e) { return []; }
+      }
+      function saveHiddenMainDistricts(hidden) {
+        try { localStorage.setItem(MAIN_HIDDEN_KEY, JSON.stringify(hidden)); }
+        catch (e) { /* storage unavailable; ignore */ }
+      }
+      function applyMainVisibility(chart, hiddenDistricts) {
+        chart.data.datasets.forEach(function (_ds, i) {
+          const district = trends.series[i] ? trends.series[i].district : null;
+          const hide = district != null && hiddenDistricts.indexOf(district) !== -1;
+          chart.setDatasetVisibility(i, !hide);
+        });
+      }
+      function syncHiddenMainDistricts(chart) {
+        mainHiddenDistricts.length = 0;
+        chart.data.datasets.forEach(function (_ds, i) {
+          if (!chart.isDatasetVisible(i)) {
+            const district = trends.series[i] ? trends.series[i].district : null;
+            if (district != null) mainHiddenDistricts.push(district);
+          }
+        });
+        saveHiddenMainDistricts(mainHiddenDistricts);
+      }
+
+      let mainHiddenDistricts = loadHiddenMainDistricts();
       const mainChart = new Chart(document.getElementById('main-chart'), {
         type: 'line',
         data: { datasets: buildMainDatasets(savedSeries) },
-        options: baseOptions('EUR/m2')
+        options: baseOptions('EUR/m2', {
+          onClick: function (_evt, legendItem, legend) {
+            const index = legendItem.datasetIndex;
+            const ci = legend.chart;
+            if (ci.isDatasetVisible(index)) {
+              ci.hide(index);
+              legendItem.hidden = true;
+            } else {
+              ci.show(index);
+              legendItem.hidden = false;
+            }
+            syncHiddenMainDistricts(ci);
+          },
+        }),
       });
+      applyMainVisibility(mainChart, mainHiddenDistricts);
+      mainChart.update();
+
       mainSelect.addEventListener('change', function (e) {
         mainChart._hoveredDatasetIndex = -1;
         mainChart.data.datasets = buildMainDatasets(e.target.value);
+        applyMainVisibility(mainChart, mainHiddenDistricts);
         mainChart.update();
         try { localStorage.setItem(MAIN_SERIES_KEY, e.target.value); }
         catch (err) { /* storage unavailable; ignore */ }
@@ -506,16 +575,74 @@ export function renderTrends(trends: Trends): string {
       const tilesEl = document.getElementById('tiles');
       const charts = {};
       const STORAGE_KEY = 'vienna.trends.tiles';
+      const TILE_HIDDEN_KEY = 'vienna.trends.tileHidden';
+      const TILE_SERIES = ['median', 'ma5', 'ma20'];
+
+      function loadTileHiddenMap() {
+        try {
+          const obj = JSON.parse(localStorage.getItem(TILE_HIDDEN_KEY) || '{}');
+          return obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : {};
+        } catch (e) { return {}; }
+      }
+      function saveTileHiddenMap(map) {
+        try { localStorage.setItem(TILE_HIDDEN_KEY, JSON.stringify(map)); }
+        catch (e) { /* storage unavailable; ignore */ }
+      }
+      function hiddenTileSeries(district) {
+        const arr = tileHiddenMap[district] || tileHiddenMap[String(district)] || [];
+        return Array.isArray(arr)
+          ? arr.filter(function (k) { return TILE_SERIES.indexOf(k) !== -1; })
+          : [];
+      }
+      function applyTileVisibility(chart, district) {
+        const hidden = hiddenTileSeries(district);
+        TILE_SERIES.forEach(function (key, i) {
+          chart.setDatasetVisibility(i, hidden.indexOf(key) === -1);
+        });
+      }
+      function syncTileHiddenSeries(chart, district) {
+        const hidden = [];
+        TILE_SERIES.forEach(function (key, i) {
+          if (!chart.isDatasetVisible(i)) hidden.push(key);
+        });
+        if (hidden.length === 0) {
+          delete tileHiddenMap[district];
+          delete tileHiddenMap[String(district)];
+        } else {
+          tileHiddenMap[district] = hidden;
+        }
+        saveTileHiddenMap(tileHiddenMap);
+      }
+
+      let tileHiddenMap = loadTileHiddenMap();
 
       function loadSavedDistricts() {
         try {
           const arr = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-          return Array.isArray(arr) ? arr.map(Number).filter(function (n) { return Number.isFinite(n); }) : [];
+          return Array.isArray(arr)
+            ? arr.map(Number).filter(function (n) { return Number.isFinite(n); }).sort(function (a, b) { return a - b; })
+            : [];
         } catch (e) { return []; }
       }
       function saveDistricts() {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.keys(charts).map(Number))); }
-        catch (e) { /* storage unavailable; ignore */ }
+        try {
+          localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify(Object.keys(charts).map(Number).sort(function (a, b) { return a - b; })),
+          );
+        } catch (e) { /* storage unavailable; ignore */ }
+      }
+
+      function insertTileSorted(tile, district) {
+        const existing = tilesEl.querySelectorAll('.district-tile');
+        for (let i = 0; i < existing.length; i++) {
+          const d = Number(existing[i].dataset.district);
+          if (district < d) {
+            tilesEl.insertBefore(tile, existing[i]);
+            return;
+          }
+        }
+        tilesEl.appendChild(tile);
       }
 
       function resizeChart(district) {
@@ -605,7 +732,7 @@ export function renderTrends(trends: Trends): string {
         tile.appendChild(actions);
         tile.appendChild(head);
         tile.appendChild(wrap);
-        tilesEl.appendChild(tile);
+        insertTileSorted(tile, district);
 
         charts[district] = new Chart(canvas, {
           type: 'line',
@@ -616,8 +743,23 @@ export function renderTrends(trends: Trends): string {
               { label: 'MA 20d', data: points(s, 'ma20'), borderColor: '#10b981', backgroundColor: '#10b981', borderWidth: BASE_WIDTH, spanGaps: true, borderDash: [2, 2], tension: 0.2 }
             ]
           },
-          options: baseOptions('EUR/m2')
+          options: baseOptions('EUR/m2', {
+            onClick: function (_evt, legendItem, legend) {
+              const index = legendItem.datasetIndex;
+              const ci = legend.chart;
+              if (ci.isDatasetVisible(index)) {
+                ci.hide(index);
+                legendItem.hidden = true;
+              } else {
+                ci.show(index);
+                legendItem.hidden = false;
+              }
+              syncTileHiddenSeries(ci, district);
+            },
+          }),
         });
+        applyTileVisibility(charts[district], district);
+        charts[district].update();
         saveDistricts();
       }
 
