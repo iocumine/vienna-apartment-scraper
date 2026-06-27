@@ -9,9 +9,10 @@ function layout(title: string, nav: string, body: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(title)}</title>
   <style>
+    * { box-sizing: border-box; }
     body { font-family: system-ui, sans-serif; margin: 0; color: #1a1a1a; }
-    header { background: #1f2937; color: #fff; padding: 12px 20px; }
-    header a { color: #cbd5e1; margin-right: 16px; text-decoration: none; }
+    header { background: #1f2937; color: #fff; padding: 12px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+    header a { color: #cbd5e1; text-decoration: none; }
     header a:hover { color: #fff; }
     main { padding: 20px; max-width: 1100px; margin: 0 auto; }
     table { border-collapse: collapse; width: 100%; margin: 12px 0; }
@@ -21,6 +22,22 @@ function layout(title: string, nav: string, body: string): string {
     .card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; min-width: 140px; }
     .card .n { font-size: 28px; font-weight: 700; }
     #map { height: 600px; border-radius: 8px; }
+    .tile { position: relative; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 0 0 16px; }
+    .tile h2 { margin: 0 28px 12px 0; font-size: 16px; }
+    .tile .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .chart-wrap { position: relative; width: 100%; height: 320px; }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .controls select, .controls button { font-size: 16px; padding: 8px 10px; border-radius: 6px; border: 1px solid #d1d5db; }
+    .controls button { background: #2563eb; color: #fff; border-color: #2563eb; cursor: pointer; }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+    .tile .close { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border: 1px solid #e5e7eb; color: #374151; border-radius: 6px; cursor: pointer; font-size: 18px; line-height: 1; }
+    .tile .close:hover { background: #ef4444; border-color: #ef4444; color: #fff; }
+    @media (max-width: 640px) {
+      main { padding: 12px; }
+      .chart-wrap { height: 260px; }
+      .tiles { grid-template-columns: 1fr; }
+      .controls select, .controls button { flex: 1 1 auto; }
+    }
   </style>
 </head>
 <body>
@@ -74,34 +91,140 @@ export function renderOverview(summary: Summary): string {
 }
 
 export function renderTrends(trends: Trends): string {
+  const districtOptions = trends.series
+    .map((s) => `<option value="${s.district}">District ${s.district}</option>`)
+    .join('');
   const body = `
-    <h1>Square-meter price per district over time</h1>
-    <canvas id="chart" height="120"></canvas>
+    <h1>Square-meter price trends</h1>
+
+    <section class="tile">
+      <div class="head"><h2>All districts &mdash; raw median EUR/m&sup2;</h2></div>
+      <div class="chart-wrap"><canvas id="main-chart"></canvas></div>
+    </section>
+
+    <section class="tile controls">
+      <label for="district-select">Add a district tile:</label>
+      <select id="district-select" aria-label="District to add">${districtOptions}</select>
+      <button id="add-tile" type="button">Add tile</button>
+    </section>
+
+    <div id="tiles" class="tiles"></div>
+    ${trends.dates.length === 0 ? '<p>No daily stats recorded yet. They are snapshotted once per day.</p>' : ''}
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <script>
       const trends = ${JSON.stringify(trends)};
       const palette = ['#ef4444','#3b82f6','#10b981','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#6366f1','#84cc16'];
-      const datasets = trends.series.map((s, i) => ({
-        label: 'District ' + s.district,
-        data: s.points.map(p => ({ x: p.date, y: p.median })),
-        borderColor: palette[i % palette.length],
-        backgroundColor: palette[i % palette.length],
-        spanGaps: true,
-        tension: 0.2,
-      }));
-      new Chart(document.getElementById('chart'), {
-        type: 'line',
-        data: { datasets },
-        options: {
+      const labels = trends.dates;
+      const seriesByDistrict = {};
+      trends.series.forEach(function (s) { seriesByDistrict[s.district] = s; });
+
+      function baseOptions(yTitle) {
+        return {
+          responsive: true,
+          maintainAspectRatio: false,
           parsing: false,
+          interaction: { mode: 'index', intersect: false },
           scales: {
-            x: { type: 'category', labels: trends.dates },
-            y: { title: { display: true, text: 'Median EUR/m2' } },
-          },
-        },
+            x: { type: 'category', labels: labels },
+            y: { title: { display: true, text: yTitle } }
+          }
+        };
+      }
+
+      function points(s, key) {
+        return s.points.map(function (p) { return { x: p.date, y: p[key] }; });
+      }
+
+      // Main tile: raw median for every district on one graph.
+      const mainDatasets = trends.series.map(function (s, i) {
+        return {
+          label: 'District ' + s.district,
+          data: points(s, 'median'),
+          borderColor: palette[i % palette.length],
+          backgroundColor: palette[i % palette.length],
+          spanGaps: true,
+          tension: 0.2
+        };
       });
-    </script>
-    ${trends.dates.length === 0 ? '<p>No daily stats recorded yet. They are snapshotted once per day.</p>' : ''}`;
+      new Chart(document.getElementById('main-chart'), {
+        type: 'line',
+        data: { datasets: mainDatasets },
+        options: baseOptions('Median EUR/m2')
+      });
+
+      // Per-district tiles: raw + 5-day and 20-day moving averages.
+      const tilesEl = document.getElementById('tiles');
+      const charts = {};
+      const STORAGE_KEY = 'vienna.trends.tiles';
+
+      function loadSavedDistricts() {
+        try {
+          const arr = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+          return Array.isArray(arr) ? arr.map(Number).filter(function (n) { return Number.isFinite(n); }) : [];
+        } catch (e) { return []; }
+      }
+      function saveDistricts() {
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.keys(charts).map(Number))); }
+        catch (e) { /* storage unavailable; ignore */ }
+      }
+
+      function addTile(district) {
+        const s = seriesByDistrict[district];
+        if (!s || charts[district]) return; // unknown or already shown
+        const tile = document.createElement('section');
+        tile.className = 'tile';
+        tile.dataset.district = String(district);
+
+        const head = document.createElement('div');
+        head.className = 'head';
+        const h2 = document.createElement('h2');
+        h2.textContent = 'District ' + district + ' \u2014 median & moving averages';
+        head.appendChild(h2);
+
+        const close = document.createElement('button');
+        close.className = 'close';
+        close.type = 'button';
+        close.setAttribute('aria-label', 'Remove District ' + district + ' tile');
+        close.textContent = '\u00d7';
+        close.addEventListener('click', function () {
+          if (charts[district]) { charts[district].destroy(); delete charts[district]; }
+          tile.remove();
+          saveDistricts();
+        });
+
+        const wrap = document.createElement('div');
+        wrap.className = 'chart-wrap';
+        const canvas = document.createElement('canvas');
+        wrap.appendChild(canvas);
+
+        tile.appendChild(close);
+        tile.appendChild(head);
+        tile.appendChild(wrap);
+        tilesEl.appendChild(tile);
+
+        charts[district] = new Chart(canvas, {
+          type: 'line',
+          data: {
+            datasets: [
+              { label: 'Raw (median)', data: points(s, 'median'), borderColor: '#3b82f6', backgroundColor: '#3b82f6', spanGaps: true, tension: 0.2 },
+              { label: 'MA 5d', data: points(s, 'ma5'), borderColor: '#f59e0b', backgroundColor: '#f59e0b', spanGaps: true, borderDash: [6, 3], tension: 0.2 },
+              { label: 'MA 20d', data: points(s, 'ma20'), borderColor: '#10b981', backgroundColor: '#10b981', spanGaps: true, borderDash: [2, 2], tension: 0.2 }
+            ]
+          },
+          options: baseOptions('EUR/m2')
+        });
+        saveDistricts();
+      }
+
+      document.getElementById('add-tile').addEventListener('click', function () {
+        const sel = document.getElementById('district-select');
+        if (sel && sel.value) addTile(Number(sel.value));
+      });
+
+      // Restore previously configured tiles.
+      loadSavedDistricts().forEach(addTile);
+    </script>`;
   return layout('Vienna Apartments - Trends', NAV, body);
 }
 

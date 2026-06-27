@@ -27,6 +27,20 @@ export function median(values: unknown[]): number | null {
   return round2(m);
 }
 
+// Trailing simple moving average over a series (e.g. one daily snapshot per
+// entry). output[i] is the average of up to `window` values ending at i, using
+// only finite values; null when the window holds no finite value. Early indices
+// use however many points are available (a partial window).
+export function movingAverage(values: unknown[], window: number): (number | null)[] {
+  if (!Array.isArray(values) || !Number.isInteger(window) || window <= 0) return [];
+  return values.map((_, i) => {
+    const win = values
+      .slice(Math.max(0, i - window + 1), i + 1)
+      .filter((v) => v !== null && v !== undefined && Number.isFinite(Number(v)));
+    return average(win);
+  });
+}
+
 // Fraction below the baseline: 0.2 means the value is 20% under baseline.
 export function deltaBelow(value: unknown, baseline: unknown): number | null {
   const v = Number(value);

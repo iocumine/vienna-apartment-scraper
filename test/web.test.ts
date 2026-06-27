@@ -43,6 +43,21 @@ describe('buildTrends', () => {
     expect(trends.series[0]!.points.map((p) => p.date)).toEqual(['2026-06-01', '2026-06-02']);
     expect(trends.series[0]!.points[0]!.median).toBe(20);
   });
+
+  it('attaches 5- and 20-day trailing moving averages of the median series', () => {
+    const repo = repoAt('2026-06-06T12:00:00.000Z');
+    const medians = [10, 20, 30, 40, 50, 60];
+    medians.forEach((m, i) => {
+      const date = `2026-06-0${i + 1}`;
+      repo.upsertDailyStats({ date, district: 7, median_price_per_m2: m, avg_price_per_m2: m, active_count: 3 });
+    });
+    const trends = buildTrends(repo);
+    const pts = trends.series[0]!.points;
+    // ma5 is a trailing average with partial windows at the start.
+    expect(pts.map((p) => p.ma5)).toEqual([10, 15, 20, 25, 30, 40]);
+    // With <20 points ma20 is just the running average from the start.
+    expect(pts[5]!.ma20).toBe(35); // avg(10..60)
+  });
 });
 
 describe('buildMapData', () => {
@@ -74,6 +89,18 @@ describe('views render valid html', () => {
     const trends = renderTrends(buildTrends(repo));
     expect(trends).toContain('chart.js');
     expect(trends).toContain('"district":7');
+    // Main all-districts tile plus the per-district tile controls.
+    expect(trends).toContain('id="main-chart"');
+    expect(trends).toContain('id="district-select"');
+    expect(trends).toContain('id="add-tile"');
+    expect(trends).toContain('<option value="7">District 7</option>');
+    expect(trends).toContain('MA 5d');
+    expect(trends).toContain('MA 20d');
+    // District tiles persist via localStorage and expose a close (x) button.
+    expect(trends).toContain('localStorage');
+    expect(trends).toContain('loadSavedDistricts');
+    expect(trends).toContain("className = 'close'");
+    expect(trends).toContain('Remove District ');
 
     const map = renderMap(buildMapData(repo));
     expect(map).toContain('leaflet');

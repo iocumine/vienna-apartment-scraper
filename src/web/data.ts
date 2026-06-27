@@ -1,3 +1,4 @@
+import { movingAverage } from '../lib/metrics.js';
 import type { Repository } from '../db/index.js';
 import type { AppConfig, ListingRow } from '../types.js';
 
@@ -31,6 +32,9 @@ export interface TrendPoint {
   median: number | null;
   avg: number | null;
   count: number;
+  // Trailing moving averages of the median series (per-district tiles).
+  ma5: number | null;
+  ma20: number | null;
 }
 
 export interface TrendSeries {
@@ -55,14 +59,23 @@ export function buildTrends(repo: Repository): Trends {
       median: r.median_price_per_m2,
       avg: r.avg_price_per_m2,
       count: r.active_count,
+      ma5: null,
+      ma20: null,
     });
   }
   const series: TrendSeries[] = [...byDistrict.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([district, points]) => ({
-      district,
-      points: points.sort((a, b) => a.date.localeCompare(b.date)),
-    }));
+    .map(([district, points]) => {
+      const sorted = points.sort((a, b) => a.date.localeCompare(b.date));
+      const medians = sorted.map((p) => p.median);
+      const ma5 = movingAverage(medians, 5);
+      const ma20 = movingAverage(medians, 20);
+      sorted.forEach((p, i) => {
+        p.ma5 = ma5[i] ?? null;
+        p.ma20 = ma20[i] ?? null;
+      });
+      return { district, points: sorted };
+    });
   return { dates, series };
 }
 

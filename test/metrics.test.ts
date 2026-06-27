@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { round2, pricePerM2, average, median, deltaBelow } from '../src/lib/metrics.js';
+import { round2, pricePerM2, average, median, movingAverage, deltaBelow } from '../src/lib/metrics.js';
 
 describe('round2', () => {
   it('rounds to two decimals', () => {
@@ -45,6 +45,27 @@ describe('median', () => {
   });
   it('returns null for empty input', () => {
     expect(median([])).toBeNull();
+  });
+});
+
+describe('movingAverage', () => {
+  it('computes a trailing average with partial windows at the start', () => {
+    expect(movingAverage([10, 20, 30, 40, 50, 60], 5)).toEqual([10, 15, 20, 25, 30, 40]);
+  });
+
+  it('uses the requested window size', () => {
+    expect(movingAverage([10, 20, 30, 40], 3)).toEqual([10, 15, 20, 30]);
+  });
+
+  it('skips non-finite values inside the window', () => {
+    expect(movingAverage([10, null, 30], 2)).toEqual([10, 10, 30]);
+    expect(movingAverage([5, null, 7], 1)).toEqual([5, null, 7]);
+  });
+
+  it('returns an empty array for empty input or invalid window', () => {
+    expect(movingAverage([], 5)).toEqual([]);
+    expect(movingAverage([1, 2], 0)).toEqual([]);
+    expect(movingAverage([1, 2], 1.5)).toEqual([]);
   });
 });
 
