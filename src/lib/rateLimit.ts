@@ -13,6 +13,14 @@ export interface WillhabenRequestLogEntry {
 
 const REQUEST_WINDOW_MS = 60_000;
 const globalRequestLog: WillhabenRequestLogEntry[] = [];
+let totalRequestCountSinceStartup = 0;
+let processStartedAt = Date.now();
+
+export interface WillhabenRequestStatsSinceStartup {
+  total: number;
+  uptimeMs: number;
+  avgPerMinute: number;
+}
 
 function pruneRequestLog(current: number): void {
   const cutoff = current - REQUEST_WINDOW_MS;
@@ -48,6 +56,7 @@ export function recordWillhabenRequest(
 ): void {
   const entry = normalizeRequestEntry(atOrEntry, legacyUrl);
   globalRequestLog.push(entry);
+  totalRequestCountSinceStartup += 1;
   pruneRequestLog(entry.at);
 }
 
@@ -56,13 +65,28 @@ export function countWillhabenRequestsLast60s(now: number = Date.now()): number 
   return globalRequestLog.length;
 }
 
+export function countWillhabenRequestsSinceStartup(): number {
+  return totalRequestCountSinceStartup;
+}
+
+export function getWillhabenRequestStatsSinceStartup(
+  now: number = Date.now(),
+): WillhabenRequestStatsSinceStartup {
+  const total = totalRequestCountSinceStartup;
+  const uptimeMs = Math.max(0, now - processStartedAt);
+  const avgPerMinute = uptimeMs > 0 ? total / (uptimeMs / 60_000) : 0;
+  return { total, uptimeMs, avgPerMinute };
+}
+
 export function getWillhabenRequestsLast60s(now: number = Date.now()): WillhabenRequestLogEntry[] {
   pruneRequestLog(now);
   return [...globalRequestLog].reverse();
 }
 
-export function resetWillhabenRequestTracking(): void {
+export function resetWillhabenRequestTracking(startedAt: number = Date.now()): void {
   globalRequestLog.length = 0;
+  totalRequestCountSinceStartup = 0;
+  processStartedAt = startedAt;
 }
 
 export interface RateLimiterDeps {

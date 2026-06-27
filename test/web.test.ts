@@ -53,6 +53,7 @@ describe('buildSummary', () => {
 
     const summary = buildSummary(repo, config, () => '2026-06-06T12:00:00.000Z');
     expect(summary.willhabenRequestsLast60s).toBe(2);
+    expect(summary.willhabenStartupStats.total).toBe(2);
     expect(summary.willhabenRequestsPerMinute).toBe(25);
     expect(summary.pendingVerificationCount).toBe(1);
   });
@@ -413,6 +414,9 @@ describe('views render valid html', () => {
     expect(overview).toContain('requests last 60s');
     expect(overview).toContain('href="/willhaben-requests"');
     expect(overview).toContain('max requests / min');
+    expect(overview).toContain('since startup');
+    expect(overview).toContain('avg req/min');
+    expect(overview).toContain('uptime');
     expect(overview.indexOf('districts tracked')).toBeLessThan(overview.indexOf('requests last 60s'));
   });
 

@@ -1,4 +1,4 @@
-import { escapeHtml, eur } from '../alerts/format.js';
+import { escapeHtml, eur, formatDuration, formatReqPerMinute } from '../alerts/format.js';
 import type { UiAlerts } from '../lib/willhabenStatus.js';
 import type { Summary, Trends, MapPoint, ListingsRow } from './data.js';
 
@@ -73,6 +73,11 @@ function layout(
     .cards { display: flex; gap: 16px; flex-wrap: wrap; }
     .card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; min-width: 140px; }
     .card .n { font-size: 28px; font-weight: 700; }
+    .card-stats { min-width: 200px; }
+    .card-stats-title { font-size: 13px; color: #6b7280; margin-bottom: 10px; }
+    .card-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .card-stat .n { font-size: 20px; font-weight: 700; line-height: 1.2; }
+    .card-stat .label { font-size: 11px; color: #6b7280; margin-top: 2px; }
     #map { height: 600px; border-radius: 8px; }
     .tile { position: relative; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 0 0 16px; }
     .tile h2 { margin: 0 68px 12px 0; font-size: 16px; }
@@ -221,9 +226,18 @@ export function renderOverview(summary: Summary): string {
       <td data-sort-value="${d.active_count}">${d.active_count}</td></tr>`,
     )
     .join('');
+  const startup = summary.willhabenStartupStats;
   const requestStatsTiles = summary.showWillhabenRequestStats
     ? `<a class="card card-link" href="/willhaben-requests" title="View Willhaben HTTP requests in the rolling last 60 seconds"><div class="n">${summary.willhabenRequestsLast60s}</div>requests last 60s</a>
-      <div class="card" title="Configured willhaben request cap per rolling 60-second window"><div class="n">${summary.willhabenRequestsPerMinute}</div>max requests / min</div>`
+      <div class="card" title="Configured willhaben request cap per rolling 60-second window"><div class="n">${summary.willhabenRequestsPerMinute}</div>max requests / min</div>
+      <div class="card card-stats" title="Willhaben HTTP requests sent since this process started">
+        <div class="card-stats-title">since startup</div>
+        <div class="card-stats-grid">
+          <div class="card-stat"><div class="n">${startup.total}</div><div class="label">requests</div></div>
+          <div class="card-stat"><div class="n">${escapeHtml(formatDuration(startup.uptimeMs))}</div><div class="label">uptime</div></div>
+          <div class="card-stat"><div class="n">${escapeHtml(formatReqPerMinute(startup.avgPerMinute))}</div><div class="label">avg req/min</div></div>
+        </div>
+      </div>`
     : '';
   const body = `
     <h1>Overview</h1>

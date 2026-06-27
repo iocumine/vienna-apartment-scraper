@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createRateLimiter, countWillhabenRequestsLast60s, getWillhabenRequestsLast60s, recordWillhabenRequest, resetWillhabenRequestTracking } from '../src/lib/rateLimit.js';
+import { createRateLimiter, countWillhabenRequestsLast60s, countWillhabenRequestsSinceStartup, getWillhabenRequestStatsSinceStartup, getWillhabenRequestsLast60s, recordWillhabenRequest, resetWillhabenRequestTracking } from '../src/lib/rateLimit.js';
 
 describe('createRateLimiter', () => {
   it('allows up to maxPerMinute requests without waiting', async () => {
@@ -76,5 +76,35 @@ describe('willhaben request tracking', () => {
       { at: now - 10_000, url: 'https://www.willhaben.at/b', status: 403, ok: false },
       { at: now - 30_000, url: 'https://www.willhaben.at/a', status: 200, ok: true },
     ]);
+  });
+
+  it('counts all requests since process startup regardless of age', () => {
+    const now = 1_000_000;
+    recordWillhabenRequest(now - 61_000);
+    recordWillhabenRequest(now - 30_000);
+    recordWillhabenRequest(now - 10_000);
+    expect(countWillhabenRequestsSinceStartup()).toBe(3);
+    expect(countWillhabenRequestsLast60s(now)).toBe(2);
+    resetWillhabenRequestTracking();
+    expect(countWillhabenRequestsSinceStartup()).toBe(0);
+  });
+
+  it('computes uptime and average req/min since startup', () => {
+    const startedAt = 1_000_000;
+    resetWillhabenRequestTracking(startedAt);
+    recordWillhabenRequest(startedAt + 10_000);
+    recordWillhabenRequest(startedAt + 20_000);
+    recordWillhabenRequest(startedAt + 30_000);
+    const now = startedAt + 120_000; // 2 minutes uptime
+    expect(getWillhabenRequestStatsSinceStartup(now)).toEqual({
+      total: 3,
+      uptimeMs: 120_000,
+      avgPerMinute: 1.5,
+    });
+    expect(getWillhabenRequestStatsSinceStartup(startedAt)).toEqual({
+      total: 3,
+      uptimeMs: 0,
+      avgPerMinute: 0,
+    });
   });
 });

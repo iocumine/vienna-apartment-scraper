@@ -1,5 +1,5 @@
 import { movingAverage } from '../lib/metrics.js';
-import { countWillhabenRequestsLast60s } from '../lib/rateLimit.js';
+import { countWillhabenRequestsLast60s, getWillhabenRequestStatsSinceStartup, type WillhabenRequestStatsSinceStartup } from '../lib/rateLimit.js';
 import { getUiAlerts, type UiAlerts } from '../lib/willhabenStatus.js';
 import type { Repository } from '../db/index.js';
 import type { AppConfig, ListingRow } from '../types.js';
@@ -12,6 +12,7 @@ export interface Summary {
   newListings: ListingRow[];
   uiAlerts: UiAlerts;
   willhabenRequestsLast60s: number;
+  willhabenStartupStats: WillhabenRequestStatsSinceStartup;
   willhabenRequestsPerMinute: number;
   pendingVerificationCount: number;
   verifiedRemovedCount: number;
@@ -34,6 +35,7 @@ export function buildSummary(
     newListings,
     uiAlerts: getUiAlerts(),
     willhabenRequestsLast60s: countWillhabenRequestsLast60s(new Date(nowIso).getTime()),
+    willhabenStartupStats: getWillhabenRequestStatsSinceStartup(new Date(nowIso).getTime()),
     willhabenRequestsPerMinute: config.willhabenRequestsPerMinute ?? 25,
     pendingVerificationCount: repo.countPendingVerification(),
     verifiedRemovedCount: repo.countVerifiedRemoved(),

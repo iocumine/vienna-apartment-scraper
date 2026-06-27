@@ -30,6 +30,27 @@ export function escapeHtml(value: unknown): string {
     .replace(/"/g, '&quot;');
 }
 
+export function formatDuration(ms: number): string {
+  if (ms < 1000) return '<1s';
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  const remMin = min % 60;
+  if (hr < 24) return remMin > 0 ? `${hr}h ${remMin}m` : `${hr}h`;
+  const day = Math.floor(hr / 24);
+  const remHr = hr % 24;
+  return remHr > 0 ? `${day}d ${remHr}h` : `${day}d`;
+}
+
+export function formatReqPerMinute(rate: number): string {
+  if (!Number.isFinite(rate)) return 'n/a';
+  if (rate >= 100) return rate.toFixed(0);
+  if (rate >= 10) return rate.toFixed(1);
+  return rate.toFixed(2);
+}
+
 export interface AlertItem {
   listing: ListingLike;
   evalResult: BelowMarketResult;
