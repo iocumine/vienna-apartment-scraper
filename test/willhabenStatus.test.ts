@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   getWillhabenAccessStatus,
+  getVerificationRateLimitStatus,
   recordWillhabenForbidden,
   recordWillhabenSuccess,
+  recordVerificationDeferred,
   resetWillhabenAccessStatus,
 } from '../src/lib/willhabenStatus.js';
 
@@ -15,6 +17,12 @@ describe('willhaben access status', () => {
       lastForbiddenAt: null,
       lastSuccessAt: null,
       lastMessage: null,
+    });
+    expect(getVerificationRateLimitStatus()).toEqual({
+      deferred: false,
+      deferredCount: 0,
+      lastDeferredAt: null,
+      requestsPerMinuteLimit: 25,
     });
   });
 
@@ -32,6 +40,16 @@ describe('willhaben access status', () => {
       lastForbiddenAt: '2026-06-10T12:00:00.000Z',
       lastSuccessAt: '2026-06-10T12:05:00.000Z',
       lastMessage: null,
+    });
+  });
+
+  it('records deferred verification checks when rate limited', () => {
+    recordVerificationDeferred(5, 50, '2026-06-10T12:00:00.000Z');
+    expect(getVerificationRateLimitStatus()).toMatchObject({
+      deferred: true,
+      deferredCount: 5,
+      lastDeferredAt: '2026-06-10T12:00:00.000Z',
+      requestsPerMinuteLimit: 50,
     });
   });
 });

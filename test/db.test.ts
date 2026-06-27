@@ -88,22 +88,38 @@ describe('repository: miss tracking + verification', () => {
     expect(repo.getListingById('a2')!.miss_count).toBe(1);
   });
 
-  it('returns verification candidates by miss threshold and last seen age', () => {
+  it('assigns a random verification miss threshold when inserting', () => {
+    const repo = createRepository(new Database(':memory:'), {
+      verificationMissThresholdMin: 10,
+      verificationMissThresholdMax: 50,
+      random: () => 0.5,
+    });
+    repo.upsertListing(listing({ id: 'a1' }));
+    expect(repo.getListingById('a1')!.verification_miss_threshold).toBe(30);
+  });
+
+  it('returns verification candidates by per-listing miss threshold and last seen age', () => {
     const repo = makeRepo(() => '2026-06-10T12:00:00.000Z');
     repo.upsertListing(listing({ id: 'ready' }));
     repo.upsertListing(listing({ id: 'young' }));
     repo.upsertListing(listing({ id: 'few-misses' }));
-    repo.db.prepare(`UPDATE listings SET last_seen_at = ?, miss_count = 5 WHERE id = 'ready'`).run(
-      '2026-06-09T00:00:00.000Z',
-    );
-    repo.db.prepare(`UPDATE listings SET last_seen_at = ?, miss_count = 5 WHERE id = 'young'`).run(
-      '2026-06-10T10:00:00.000Z',
-    );
-    repo.db.prepare(`UPDATE listings SET last_seen_at = ?, miss_count = 2 WHERE id = 'few-misses'`).run(
-      '2026-06-09T00:00:00.000Z',
-    );
+    repo.db
+      .prepare(
+        `UPDATE listings SET last_seen_at = ?, miss_count = 5, verification_miss_threshold = 5 WHERE id = 'ready'`,
+      )
+      .run('2026-06-09T00:00:00.000Z');
+    repo.db
+      .prepare(
+        `UPDATE listings SET last_seen_at = ?, miss_count = 5, verification_miss_threshold = 5 WHERE id = 'young'`,
+      )
+      .run('2026-06-10T10:00:00.000Z');
+    repo.db
+      .prepare(
+        `UPDATE listings SET last_seen_at = ?, miss_count = 2, verification_miss_threshold = 5 WHERE id = 'few-misses'`,
+      )
+      .run('2026-06-09T00:00:00.000Z');
 
-    const candidates = repo.getListingsForVerification(5, '2026-06-09T23:59:59.000Z');
+    const candidates = repo.getListingsForVerification('2026-06-09T23:59:59.000Z');
     expect(candidates.map((r) => r.id)).toEqual(['ready']);
   });
 

@@ -29,8 +29,9 @@ export interface AppConfig {
   maxPagesPerDistrict: number;
   /** Max willhaben HTTP requests allowed in any rolling 60s window. */
   willhabenRequestsPerMinute: number;
-  /** Consecutive poll misses before a willhaben verification check. */
-  verificationMissThreshold: number;
+  /** Per-listing miss threshold is chosen randomly in [min, max] when first seen. */
+  verificationMissThresholdMin: number;
+  verificationMissThresholdMax: number;
 }
 
 /** Hours a listing must be unseen before it is eligible for verification. */
@@ -61,6 +62,7 @@ export interface ListingRow {
   last_seen_at: string;
   is_active: number;
   miss_count: number;
+  verification_miss_threshold: number;
   title: string | null;
   url: string | null;
   district: number | null;

@@ -44,4 +44,14 @@ describe('createRateLimiter', () => {
 
     expect(sleep).toHaveBeenCalledTimes(1);
   });
+
+  it('reports when the next request would have to wait', async () => {
+    let now = 0;
+    const limiter = createRateLimiter(2, { now: () => now, sleep: async () => {} });
+    expect(limiter.wouldBlock()).toBe(false);
+    await limiter.acquire();
+    expect(limiter.wouldBlock()).toBe(false);
+    await limiter.acquire();
+    expect(limiter.wouldBlock()).toBe(true);
+  });
 });

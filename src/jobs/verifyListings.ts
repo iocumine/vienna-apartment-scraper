@@ -1,5 +1,9 @@
 import { buildKeywordSearchUrl, fetchPage, type ScrapeDeps } from '../scraper/willhaben.js';
 import type { Repository } from '../db/index.js';
+import {
+  clearVerificationDeferred,
+  recordVerificationDeferred,
+} from '../lib/willhabenStatus.js';
 import type { AppConfig, Logger, TransactionType } from '../types.js';
 import { VERIFICATION_MIN_HOURS } from '../types.js';
 
@@ -19,6 +23,7 @@ export interface VerifyListingsResult {
   checked: number;
   deactivated: number;
   reconfirmed: number;
+  deferred: number;
 }
 
 function defaultSleep(ms: number): Promise<void> {
@@ -47,23 +52,35 @@ export async function verifyStaleListings({
   logger = console,
 }: VerifyListingsOptions): Promise<VerifyListingsResult> {
   const nowIso = now();
-  const threshold = config.verificationMissThreshold ?? 5;
   const maxLastSeenAt = new Date(
     new Date(nowIso).getTime() - VERIFICATION_MIN_HOURS * 60 * 60 * 1000,
   ).toISOString();
-  const candidates = repo.getListingsForVerification(threshold, maxLastSeenAt);
+  const candidates = repo.getListingsForVerification(maxLastSeenAt);
+  clearVerificationDeferred();
   const verifyFn =
     deps.verifyListingFn ??
     ((id, tx, scrapeDeps) => isListingActiveOnWillhaben(id, tx, scrapeDeps));
   const sleep = deps.sleep ?? defaultSleep;
   const delayMs = config.requestDelayMs ?? 1500;
+  const rateLimit = config.willhabenRequestsPerMinute ?? 25;
 
   let deactivated = 0;
   let reconfirmed = 0;
+  let checked = 0;
+  let deferred = 0;
   for (let i = 0; i < candidates.length; i += 1) {
+    if (deps.rateLimiter?.wouldBlock?.()) {
+      deferred = candidates.length - i;
+      recordVerificationDeferred(deferred, rateLimit, nowIso);
+      logger.warn?.(
+        `verify: rate limit (${rateLimit}/min) reached, deferred ${deferred} pending verifications`,
+      );
+      break;
+    }
     const row = candidates[i]!;
     try {
       const stillActive = await verifyFn(row.id, config.transactionType, deps);
+      checked += 1;
       if (stillActive) {
         repo.resetMissCount(row.id);
         reconfirmed += 1;
@@ -72,15 +89,16 @@ export async function verifyStaleListings({
         deactivated += 1;
       }
     } catch (err) {
+      checked += 1;
       logger.warn?.(`verify ${row.id} failed: ${(err as Error).message}`);
     }
     if (i < candidates.length - 1) await sleep(delayMs);
   }
 
-  if (candidates.length > 0) {
+  if (checked > 0) {
     logger.info?.(
-      `verify: ${candidates.length} checked, ${deactivated} deactivated, ${reconfirmed} reconfirmed`,
+      `verify: ${checked} checked, ${deactivated} deactivated, ${reconfirmed} reconfirmed${deferred ? `, ${deferred} deferred` : ''}`,
     );
   }
-  return { checked: candidates.length, deactivated, reconfirmed };
+  return { checked, deactivated, reconfirmed, deferred };
 }

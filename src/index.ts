@@ -11,7 +11,10 @@ import type { Emailer } from './types.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const repo = openDatabase(config.dbPath);
+  const repo = openDatabase(config.dbPath, {
+    verificationMissThresholdMin: config.verificationMissThresholdMin,
+    verificationMissThresholdMax: config.verificationMissThresholdMax,
+  });
 
   const email: Emailer | null = config.smtp.user ? createEmailer(config.smtp) : null;
   if (!email) console.warn('SMTP not configured (SMTP_USER missing) - email disabled.');

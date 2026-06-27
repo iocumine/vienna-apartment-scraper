@@ -1,5 +1,5 @@
 import { movingAverage } from '../lib/metrics.js';
-import { getWillhabenAccessStatus, type WillhabenAccessStatus } from '../lib/willhabenStatus.js';
+import { getUiAlerts, type UiAlerts } from '../lib/willhabenStatus.js';
 import type { Repository } from '../db/index.js';
 import type { AppConfig, ListingRow } from '../types.js';
 
@@ -9,7 +9,7 @@ export interface Summary {
   newCount: number;
   districts: ReturnType<Repository['computePeriodDistrictStats']>;
   newListings: ListingRow[];
-  willhabenAccess: WillhabenAccessStatus;
+  uiAlerts: UiAlerts;
 }
 
 export function buildSummary(
@@ -26,7 +26,7 @@ export function buildSummary(
     newCount: newListings.length,
     districts: repo.computePeriodDistrictStats(),
     newListings,
-    willhabenAccess: getWillhabenAccessStatus(),
+    uiAlerts: getUiAlerts(),
   };
 }
 

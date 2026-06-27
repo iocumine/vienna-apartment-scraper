@@ -3,6 +3,7 @@ import {
   loadConfig,
   parseDistricts,
   parseEmails,
+  pickVerificationMissThreshold,
   postcodeForDistrict,
   districtForPostcode,
   DEFAULT_DISTRICTS,
@@ -74,8 +75,9 @@ describe('loadConfig', () => {
     expect(cfg.alertThresholdPct).toBeCloseTo(0.15);
     expect(cfg.port).toBe(3000);
     expect(cfg.smtp.host).toBe('smtp.gmail.com');
-    expect(cfg.verificationMissThreshold).toBe(5);
-    expect(cfg.willhabenRequestsPerMinute).toBe(50);
+    expect(cfg.verificationMissThresholdMin).toBe(10);
+    expect(cfg.verificationMissThresholdMax).toBe(50);
+    expect(cfg.willhabenRequestsPerMinute).toBe(25);
   });
 
   it('reads overrides from env', () => {
@@ -110,5 +112,18 @@ describe('loadConfig', () => {
     const cfg = loadConfig({ PORT: 'not-a-number', ROOMS_MAX: '' });
     expect(cfg.port).toBe(3000);
     expect(cfg.roomsMax).toBe(2);
+  });
+});
+
+describe('pickVerificationMissThreshold', () => {
+  it('returns an inclusive integer between min and max', () => {
+    expect(pickVerificationMissThreshold(5, 7, () => 0)).toBe(5);
+    expect(pickVerificationMissThreshold(5, 7, () => 0.999)).toBe(7);
+    expect(pickVerificationMissThreshold(5, 7, () => 0.5)).toBe(6);
+  });
+
+  it('accepts min and max in either order', () => {
+    expect(pickVerificationMissThreshold(7, 5, () => 0)).toBe(5);
+    expect(pickVerificationMissThreshold(7, 5, () => 0.999)).toBe(7);
   });
 });

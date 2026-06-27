@@ -60,6 +60,18 @@ function num(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+// Inclusive random integer in [min, max] (order-independent).
+export function pickVerificationMissThreshold(
+  min: number,
+  max: number,
+  random: () => number = Math.random,
+): number {
+  const lo = Math.min(Math.floor(min), Math.floor(max));
+  const hi = Math.max(Math.floor(min), Math.floor(max));
+  if (lo === hi) return lo;
+  return lo + Math.floor(random() * (hi - lo + 1));
+}
+
 function str(value: string | undefined, fallback: string): string {
   if (value === undefined || value === null || String(value).trim() === '') return fallback;
   return String(value);
@@ -110,7 +122,8 @@ export function loadConfig(env: Env = process.env): AppConfig {
 
     requestDelayMs: num(env.REQUEST_DELAY_MS, 1500),
     maxPagesPerDistrict: num(env.MAX_PAGES_PER_DISTRICT, 5),
-    willhabenRequestsPerMinute: num(env.WILLHABEN_REQUESTS_PER_MINUTE, 50),
-    verificationMissThreshold: num(env.VERIFICATION_MISS_THRESHOLD, 5),
+    willhabenRequestsPerMinute: num(env.WILLHABEN_REQUESTS_PER_MINUTE, 25),
+    verificationMissThresholdMin: num(env.VERIFICATION_MISS_THRESHOLD_MIN, 10),
+    verificationMissThresholdMax: num(env.VERIFICATION_MISS_THRESHOLD_MAX, 50),
   };
 }

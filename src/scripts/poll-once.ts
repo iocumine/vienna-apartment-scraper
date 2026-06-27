@@ -8,7 +8,10 @@ import { runStatsSnapshot } from '../jobs/computeStats.js';
 // Manual one-shot poll (npm run poll:once) for testing the scraper end-to-end.
 async function main(): Promise<void> {
   const config = loadConfig();
-  const repo = openDatabase(config.dbPath);
+  const repo = openDatabase(config.dbPath, {
+    verificationMissThresholdMin: config.verificationMissThresholdMin,
+    verificationMissThresholdMax: config.verificationMissThresholdMax,
+  });
   const email = config.smtp.user ? createEmailer(config.smtp) : null;
   const result = await runPoll({ repo, config, email });
   runStatsSnapshot({ repo });

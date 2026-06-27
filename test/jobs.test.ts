@@ -42,7 +42,8 @@ const baseConfig = {
   statsWindowDays: 30,
   alertEmailTo: ['you@x.com'],
   reportEmailTo: ['you@x.com'],
-  verificationMissThreshold: 5,
+  verificationMissThresholdMin: 5,
+  verificationMissThresholdMax: 5,
   requestDelayMs: 0,
 } as AppConfig;
 
@@ -59,7 +60,7 @@ describe('runPoll', () => {
       repo,
       config: baseConfig,
       scrapeFn,
-      verifyFn: async () => ({ checked: 0, deactivated: 0, reconfirmed: 0 }),
+      verifyFn: async () => ({ checked: 0, deactivated: 0, reconfirmed: 0, deferred: 0 }),
       now: () => '2026-06-02T12:00:00.000Z',
       logger: { info() {}, warn() {} },
     });
@@ -78,7 +79,7 @@ describe('runPoll', () => {
     const repo = repoWithClock(clock);
     repo.upsertListing(listing({ id: 'stale', price: 1000, area_m2: 50 }));
     repo.db
-      .prepare(`UPDATE listings SET last_seen_at = ?, miss_count = 5 WHERE id = 'stale'`)
+      .prepare(`UPDATE listings SET last_seen_at = ?, miss_count = 5, verification_miss_threshold = 5 WHERE id = 'stale'`)
       .run('2026-06-01T00:00:00.000Z');
 
     clock.now = '2026-06-02T12:00:01.000Z';
@@ -102,11 +103,11 @@ describe('runPoll', () => {
 
   it('shares one rate limiter between scrape and verification', async () => {
     const acquire = vi.fn(async () => {});
-    const rateLimiter = { acquire };
+    const rateLimiter = { acquire, wouldBlock: () => false };
     const repo = repoWithClock({ now: '2026-06-10T12:00:00.000Z' });
     repo.upsertListing(listing({ id: 'stale' }));
     repo.db
-      .prepare(`UPDATE listings SET last_seen_at = ?, miss_count = 5 WHERE id = 'stale'`)
+      .prepare(`UPDATE listings SET last_seen_at = ?, miss_count = 5, verification_miss_threshold = 5 WHERE id = 'stale'`)
       .run('2026-06-09T00:00:00.000Z');
 
     await runPoll({

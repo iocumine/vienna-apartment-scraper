@@ -1,8 +1,9 @@
 import { escapeHtml, eur } from '../alerts/format.js';
-import type { WillhabenAccessStatus } from '../lib/willhabenStatus.js';
+import type { UiAlerts } from '../lib/willhabenStatus.js';
 import type { Summary, Trends, MapPoint, ListingsRow } from './data.js';
 
-function forbiddenAlertHtml(access: WillhabenAccessStatus | undefined): string {
+function forbiddenAlertHtml(alerts: UiAlerts | undefined): string {
+  const access = alerts?.willhabenAccess;
   if (!access?.forbidden) return '';
   const when = access.lastForbiddenAt
     ? ` Last seen at ${escapeHtml(access.lastForbiddenAt)}.`
@@ -14,11 +15,28 @@ function forbiddenAlertHtml(access: WillhabenAccessStatus | undefined): string {
   </div>`;
 }
 
+function verificationRateLimitAlertHtml(alerts: UiAlerts | undefined): string {
+  const rate = alerts?.verificationRateLimit;
+  if (!rate?.deferred || rate.deferredCount <= 0) return '';
+  const when = rate.lastDeferredAt ? ` Last seen at ${escapeHtml(rate.lastDeferredAt)}.` : '';
+  const limit = rate.requestsPerMinuteLimit;
+  const count = rate.deferredCount;
+  const noun = count === 1 ? 'listing' : 'listings';
+  return `<div class="alert-rate-limit" role="status">
+    <strong>Verification paused (rate limit).</strong>
+    The willhaben request limit of ${limit} per minute was reached, so ${count} pending verification ${noun} ${count === 1 ? 'was' : 'were'} not checked this poll.${when}
+  </div>`;
+}
+
+function siteAlertsHtml(alerts: UiAlerts | undefined): string {
+  return forbiddenAlertHtml(alerts) + verificationRateLimitAlertHtml(alerts);
+}
+
 function layout(
   title: string,
   nav: string,
   body: string,
-  accessStatus?: WillhabenAccessStatus,
+  uiAlerts?: UiAlerts,
 ): string {
   return `<!doctype html>
 <html lang="en">
@@ -33,6 +51,7 @@ function layout(
     header a { color: #cbd5e1; text-decoration: none; }
     header a:hover { color: #fff; }
     .alert-forbidden { background: #fef2f2; color: #991b1b; border-bottom: 1px solid #fecaca; padding: 12px 20px; font-size: 14px; line-height: 1.45; }
+    .alert-rate-limit { background: #fffbeb; color: #92400e; border-bottom: 1px solid #fde68a; padding: 12px 20px; font-size: 14px; line-height: 1.45; }
     main { padding: 20px; max-width: 1100px; margin: 0 auto; }
     table { border-collapse: collapse; width: 100%; margin: 12px 0; }
     th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 14px; }
@@ -94,7 +113,7 @@ function layout(
     <strong>Vienna Apartments</strong>
     ${nav}
   </header>
-  ${forbiddenAlertHtml(accessStatus)}
+  ${siteAlertsHtml(uiAlerts)}
   <main>${body}</main>
 </body>
 </html>`;
@@ -232,7 +251,7 @@ export function renderOverview(summary: Summary): string {
         });
       })();
     </script>`;
-  return layout('Vienna Apartments - Overview', NAV, body, summary.willhabenAccess);
+  return layout('Vienna Apartments - Overview', NAV, body, summary.uiAlerts);
 }
 
 interface ListingsPageOptions {
@@ -241,7 +260,7 @@ interface ListingsPageOptions {
   emptyText: string;
   listings: ListingsRow[];
   initialDistrict?: number | null;
-  accessStatus?: WillhabenAccessStatus;
+  uiAlerts?: UiAlerts;
 }
 
 // Shared filterable + sortable listings page. Used for both the full active set
@@ -252,7 +271,7 @@ function listingsPage({
   emptyText,
   listings,
   initialDistrict = null,
-  accessStatus,
+  uiAlerts,
 }: ListingsPageOptions): string {
   const districts = [...new Set(listings.map((l) => l.district).filter((d): d is number => d != null))];
   if (initialDistrict != null && Number.isFinite(initialDistrict)) districts.push(initialDistrict);
@@ -356,13 +375,13 @@ function listingsPage({
         apply();
       })();
     </script>`;
-  return layout(docTitle, NAV, body, accessStatus);
+  return layout(docTitle, NAV, body, uiAlerts);
 }
 
 export function renderListings(
   listings: ListingsRow[],
   initialDistrict?: number | null,
-  accessStatus?: WillhabenAccessStatus,
+  uiAlerts?: UiAlerts,
 ): string {
   return listingsPage({
     docTitle: 'Vienna Apartments - Active listings',
@@ -370,14 +389,14 @@ export function renderListings(
     emptyText: 'No active listings',
     listings,
     initialDistrict: initialDistrict ?? null,
-    accessStatus,
+    uiAlerts,
   });
 }
 
 export function renderNewListings(
   listings: ListingsRow[],
   initialDistrict?: number | null,
-  accessStatus?: WillhabenAccessStatus,
+  uiAlerts?: UiAlerts,
 ): string {
   return listingsPage({
     docTitle: 'Vienna Apartments - New listings',
@@ -385,11 +404,11 @@ export function renderNewListings(
     emptyText: 'No new listings in the last 24h',
     listings,
     initialDistrict: initialDistrict ?? null,
-    accessStatus,
+    uiAlerts,
   });
 }
 
-export function renderTrends(trends: Trends, accessStatus?: WillhabenAccessStatus): string {
+export function renderTrends(trends: Trends, uiAlerts?: UiAlerts): string {
   const districtOptions = trends.series
     .map((s) => `<option value="${s.district}">District ${s.district}</option>`)
     .join('');
@@ -850,10 +869,10 @@ export function renderTrends(trends: Trends, accessStatus?: WillhabenAccessStatu
       // Restore previously configured tiles.
       loadSavedDistricts().forEach(addTile);
     </script>`;
-  return layout('Vienna Apartments - Trends', NAV, body, accessStatus);
+  return layout('Vienna Apartments - Trends', NAV, body, uiAlerts);
 }
 
-export function renderMap(points: MapPoint[], accessStatus?: WillhabenAccessStatus): string {
+export function renderMap(points: MapPoint[], uiAlerts?: UiAlerts): string {
   const body = `
     <h1>Listings map</h1>
     <p>Green = below district median sqm price, red = at/above.</p>
@@ -879,5 +898,5 @@ export function renderMap(points: MapPoint[], accessStatus?: WillhabenAccessStat
           );
       }
     </script>`;
-  return layout('Vienna Apartments - Map', NAV, body, accessStatus);
+  return layout('Vienna Apartments - Map', NAV, body, uiAlerts);
 }

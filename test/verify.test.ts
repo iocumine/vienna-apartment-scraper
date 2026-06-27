@@ -5,6 +5,11 @@ import {
   isListingActiveOnWillhaben,
   verifyStaleListings,
 } from '../src/jobs/verifyListings.js';
+import { createRateLimiter } from '../src/lib/rateLimit.js';
+import {
+  getVerificationRateLimitStatus,
+  resetWillhabenAccessStatus,
+} from '../src/lib/willhabenStatus.js';
 import type { AppConfig } from '../src/types.js';
 
 function repoWithClock(clockRef: { now: string }): Repository {
@@ -13,7 +18,8 @@ function repoWithClock(clockRef: { now: string }): Repository {
 
 const baseConfig = {
   transactionType: 'rent',
-  verificationMissThreshold: 5,
+  verificationMissThresholdMin: 5,
+  verificationMissThresholdMax: 5,
   requestDelayMs: 0,
 } as AppConfig;
 
@@ -78,7 +84,7 @@ describe('verifyStaleListings', () => {
     // Last seen more than 12h ago with enough misses.
     repo.db
       .prepare(
-        `UPDATE listings SET last_seen_at = ?, miss_count = 5
+        `UPDATE listings SET last_seen_at = ?, miss_count = 5, verification_miss_threshold = 5
          WHERE id IN ('gone', 'still')`,
       )
       .run('2026-06-09T12:00:00.000Z');
@@ -92,7 +98,7 @@ describe('verifyStaleListings', () => {
       logger: { info() {}, warn() {} },
     });
 
-    expect(res).toEqual({ checked: 2, deactivated: 1, reconfirmed: 1 });
+    expect(res).toEqual({ checked: 2, deactivated: 1, reconfirmed: 1, deferred: 0 });
     expect(repo.getListingById('gone')!.is_active).toBe(0);
     expect(repo.getListingById('still')!.is_active).toBe(1);
     expect(repo.getListingById('still')!.miss_count).toBe(0);
@@ -115,7 +121,9 @@ describe('verifyStaleListings', () => {
       lng: null,
       published_at: null,
     });
-    repo.db.prepare('UPDATE listings SET miss_count = 5 WHERE id = ?').run('recent');
+    repo.db
+      .prepare(`UPDATE listings SET miss_count = 5, verification_miss_threshold = 5 WHERE id = ?`)
+      .run('recent');
 
     const verifyListingFn = vi.fn(async () => false);
     const res = await verifyStaleListings({
@@ -129,5 +137,53 @@ describe('verifyStaleListings', () => {
     expect(res.checked).toBe(0);
     expect(verifyListingFn).not.toHaveBeenCalled();
     expect(repo.getListingById('recent')!.is_active).toBe(1);
+  });
+
+  it('defers remaining verifications when the rate limit is already full', async () => {
+    const clock = { now: '2026-06-10T12:00:00.000Z' };
+    const repo = repoWithClock(clock);
+    for (const id of ['a', 'b', 'c']) {
+      repo.upsertListing({
+        id,
+        title: id,
+        url: `https://willhaben.at/${id}`,
+        district: 7,
+        postcode: 1070,
+        rooms: 2,
+        area_m2: 50,
+        price: 1000,
+        price_per_m2: 20,
+        lat: null,
+        lng: null,
+        published_at: null,
+      });
+    }
+    repo.db
+      .prepare(
+        `UPDATE listings SET last_seen_at = ?, miss_count = 5, verification_miss_threshold = 5 WHERE id IN ('a', 'b', 'c')`,
+      )
+      .run('2026-06-09T12:00:00.000Z');
+
+    resetWillhabenAccessStatus();
+    let nowMs = 0;
+    const rateLimiter = createRateLimiter(1, { now: () => nowMs, sleep: async () => {} });
+    await rateLimiter.acquire();
+
+    const verifyListingFn = vi.fn(async () => true);
+    const res = await verifyStaleListings({
+      repo,
+      config: { ...baseConfig, willhabenRequestsPerMinute: 1 } as AppConfig,
+      deps: { verifyListingFn, rateLimiter, sleep: async () => {} },
+      now: () => clock.now,
+      logger: { info() {}, warn() {} },
+    });
+
+    expect(res).toEqual({ checked: 0, deactivated: 0, reconfirmed: 0, deferred: 3 });
+    expect(verifyListingFn).not.toHaveBeenCalled();
+    expect(getVerificationRateLimitStatus()).toMatchObject({
+      deferred: true,
+      deferredCount: 3,
+      requestsPerMinuteLimit: 1,
+    });
   });
 });

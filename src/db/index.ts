@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { average, median, pricePerM2, round2 } from '../lib/metrics.js';
+import { pickVerificationMissThreshold } from '../config.js';
 import type { DailyStatRow, DistrictStat, ListingRow, NormalizedListing } from '../types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -18,6 +19,11 @@ export function migrate(db: DB): DB {
   const cols = db.prepare('PRAGMA table_info(listings)').all() as Array<{ name: string }>;
   if (!cols.some((c) => c.name === 'miss_count')) {
     db.exec('ALTER TABLE listings ADD COLUMN miss_count INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!cols.some((c) => c.name === 'verification_miss_threshold')) {
+    db.exec(
+      'ALTER TABLE listings ADD COLUMN verification_miss_threshold INTEGER NOT NULL DEFAULT 5',
+    );
   }
   return db;
 }
@@ -37,17 +43,30 @@ interface UpsertResult {
 
 export interface RepositoryOptions {
   clock?: () => string;
+  verificationMissThresholdMin?: number;
+  verificationMissThresholdMax?: number;
+  random?: () => number;
 }
 
+const DEFAULT_VERIFICATION_MISS_THRESHOLD_MIN = 10;
+const DEFAULT_VERIFICATION_MISS_THRESHOLD_MAX = 50;
+
 // Wraps a better-sqlite3 connection with the queries the app needs.
-export function createRepository(db: DB, { clock = nowIso }: RepositoryOptions = {}) {
+export function createRepository(db: DB, options: RepositoryOptions = {}) {
   migrate(db);
+  const {
+    clock = nowIso,
+    verificationMissThresholdMin = DEFAULT_VERIFICATION_MISS_THRESHOLD_MIN,
+    verificationMissThresholdMax = DEFAULT_VERIFICATION_MISS_THRESHOLD_MAX,
+    random = Math.random,
+  } = options;
 
   const insertStmt = db.prepare(`
-    INSERT INTO listings (id, first_seen_at, last_seen_at, is_active, miss_count, title, url,
+    INSERT INTO listings (id, first_seen_at, last_seen_at, is_active, miss_count,
+      verification_miss_threshold, title, url,
       district, postcode, rooms, area_m2, price, price_per_m2, lat, lng, published_at, raw_json)
-    VALUES (@id, @ts, @ts, 1, 0, @title, @url, @district, @postcode, @rooms, @area_m2,
-      @price, @price_per_m2, @lat, @lng, @published_at, @raw_json)
+    VALUES (@id, @ts, @ts, 1, 0, @verification_miss_threshold, @title, @url, @district, @postcode,
+      @rooms, @area_m2, @price, @price_per_m2, @lat, @lng, @published_at, @raw_json)
   `);
 
   const updateStmt = db.prepare(`
@@ -84,7 +103,14 @@ export function createRepository(db: DB, { clock = nowIso }: RepositoryOptions =
       updateStmt.run(row);
       return { isNew: false, pricePerM2: ppm2 };
     }
-    insertStmt.run(row);
+    insertStmt.run({
+      ...row,
+      verification_miss_threshold: pickVerificationMissThreshold(
+        verificationMissThresholdMin,
+        verificationMissThresholdMax,
+        random,
+      ),
+    });
     return { isNew: true, pricePerM2: ppm2 };
   }
 
@@ -111,14 +137,16 @@ export function createRepository(db: DB, { clock = nowIso }: RepositoryOptions =
     return info.changes;
   }
 
-  function getListingsForVerification(missThreshold: number, maxLastSeenAt: string): ListingRow[] {
+  function getListingsForVerification(maxLastSeenAt: string): ListingRow[] {
     return db
       .prepare(
         `SELECT * FROM listings
-         WHERE is_active = 1 AND miss_count >= ? AND last_seen_at <= ?
+         WHERE is_active = 1
+           AND miss_count >= verification_miss_threshold
+           AND last_seen_at <= ?
          ORDER BY last_seen_at ASC`,
       )
-      .all(missThreshold, maxLastSeenAt) as ListingRow[];
+      .all(maxLastSeenAt) as ListingRow[];
   }
 
   function resetMissCount(id: string): void {

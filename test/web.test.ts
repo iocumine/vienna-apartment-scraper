@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { createRepository, type Repository } from '../src/db/index.js';
 import { buildSummary, buildTrends, buildMapData, buildActiveListings, buildNewListings } from '../src/web/data.js';
 import { renderOverview, renderTrends, renderMap, renderListings, renderNewListings } from '../src/web/views.js';
-import { resetWillhabenAccessStatus, recordWillhabenForbidden } from '../src/lib/willhabenStatus.js';
+import { resetWillhabenAccessStatus, recordWillhabenForbidden, recordVerificationDeferred } from '../src/lib/willhabenStatus.js';
 import type { AppConfig, NormalizedListing } from '../src/types.js';
 
 function repoAt(now: string): Repository {
@@ -35,16 +35,26 @@ describe('buildSummary', () => {
     expect(summary.districts.map((d) => d.district)).toEqual([7, 9]);
     expect(summary.districts[0]).toMatchObject({ district: 7, median_price_per_m2: 20, active_count: 1 });
     expect(summary.districts[1]).toMatchObject({ district: 9, median_price_per_m2: 30, active_count: 1 });
-    expect(summary.willhabenAccess.forbidden).toBe(false);
+    expect(summary.uiAlerts.willhabenAccess.forbidden).toBe(false);
   });
 
   it('includes willhaben 403 status in the summary payload', () => {
     recordWillhabenForbidden('willhaben request failed: 403 Forbidden', '2026-06-06T12:00:00.000Z');
     const summary = buildSummary(repoAt('2026-06-06T12:00:00.000Z'), config);
-    expect(summary.willhabenAccess).toMatchObject({
+    expect(summary.uiAlerts.willhabenAccess).toMatchObject({
       forbidden: true,
       lastForbiddenAt: '2026-06-06T12:00:00.000Z',
       lastMessage: 'willhaben request failed: 403 Forbidden',
+    });
+  });
+
+  it('includes deferred verification status in the summary payload', () => {
+    recordVerificationDeferred(4, 50, '2026-06-06T12:00:00.000Z');
+    const summary = buildSummary(repoAt('2026-06-06T12:00:00.000Z'), config);
+    expect(summary.uiAlerts.verificationRateLimit).toMatchObject({
+      deferred: true,
+      deferredCount: 4,
+      requestsPerMinuteLimit: 50,
     });
   });
 });
@@ -274,22 +284,52 @@ describe('views render valid html', () => {
   });
 
   it('shows a site-wide banner when willhaben returns HTTP 403', () => {
-    const forbidden = {
-      forbidden: true,
-      lastForbiddenAt: '2026-06-06T12:00:00.000Z',
-      lastSuccessAt: null,
-      lastMessage: 'willhaben request failed: 403 Forbidden',
+    const uiAlerts = {
+      willhabenAccess: {
+        forbidden: true,
+        lastForbiddenAt: '2026-06-06T12:00:00.000Z',
+        lastSuccessAt: null,
+        lastMessage: 'willhaben request failed: 403 Forbidden',
+      },
+      verificationRateLimit: {
+        deferred: false,
+        deferredCount: 0,
+        lastDeferredAt: null,
+        requestsPerMinuteLimit: 50,
+      },
     };
     const overview = renderOverview({
       ...buildSummary(repoAt('2026-06-06T12:00:00.000Z'), config),
-      willhabenAccess: forbidden,
+      uiAlerts,
     });
     expect(overview).toContain('alert-forbidden');
     expect(overview).toContain('HTTP 403');
     expect(overview).toContain('willhaben request failed: 403 Forbidden');
 
-    expect(renderListings([], null, forbidden)).toContain('alert-forbidden');
-    expect(renderTrends({ dates: [], series: [] }, forbidden)).toContain('alert-forbidden');
-    expect(renderMap([], forbidden)).toContain('alert-forbidden');
+    expect(renderListings([], null, uiAlerts)).toContain('alert-forbidden');
+    expect(renderTrends({ dates: [], series: [] }, uiAlerts)).toContain('alert-forbidden');
+    expect(renderMap([], uiAlerts)).toContain('alert-forbidden');
+  });
+
+  it('shows a site-wide banner when verification is deferred by rate limiting', () => {
+    const uiAlerts = {
+      willhabenAccess: {
+        forbidden: false,
+        lastForbiddenAt: null,
+        lastSuccessAt: null,
+        lastMessage: null,
+      },
+      verificationRateLimit: {
+        deferred: true,
+        deferredCount: 3,
+        lastDeferredAt: '2026-06-06T12:00:00.000Z',
+        requestsPerMinuteLimit: 50,
+      },
+    };
+    const html = renderListings([], null, uiAlerts);
+    expect(html).toContain('alert-rate-limit');
+    expect(html).toContain('Verification paused (rate limit)');
+    expect(html).toContain('50 per minute');
+    expect(html).toContain('3 pending verification listings');
   });
 });

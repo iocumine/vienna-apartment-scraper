@@ -39,8 +39,8 @@ Key variables (see `.env.example` for the full list):
 - `TRANSACTION_TYPE` - `rent` or `buy`.
 - `ROOMS_MIN` / `ROOMS_MAX` - room range (default 1-2).
 - `POLL_INTERVAL_CRON` - how often to scrape (default every 45 min).
-- `VERIFICATION_MISS_THRESHOLD` - consecutive poll misses before checking willhaben whether a listing is still active (default `5`; also requires 12h since last seen).
-- `WILLHABEN_REQUESTS_PER_MINUTE` - cap on willhaben HTTP requests in any rolling 60s window (default `50`).
+- `VERIFICATION_MISS_THRESHOLD_MIN` / `VERIFICATION_MISS_THRESHOLD_MAX` - each listing gets a random miss count threshold in this inclusive range before willhaben verification runs (defaults `10`–`50`; also requires 12h since last seen).
+- `WILLHABEN_REQUESTS_PER_MINUTE` - cap on willhaben HTTP requests in any rolling 60s window (default `25`).
 - `ALERT_THRESHOLD_PCT` - fraction below district median that triggers an alert (default `0.15`).
 - `SMTP_USER` / `SMTP_PASS` - Gmail address + [app password](https://support.google.com/accounts/answer/185833).
 - `ALERT_EMAIL_TO` / `REPORT_EMAIL_TO` - recipient(s) for alerts and the daily report. Accepts a single address or a comma-separated list (e.g. `me@x.com, partner@y.com`); defaults to `SMTP_USER`.

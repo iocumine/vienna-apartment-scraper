@@ -1,5 +1,7 @@
 export interface RateLimiter {
   acquire(): Promise<void>;
+  /** True when another request would have to wait for the 60s window to slide. */
+  wouldBlock(): boolean;
 }
 
 export interface RateLimiterDeps {
@@ -26,7 +28,14 @@ export function createRateLimiter(
     }
   }
 
+  function wouldBlock(): boolean {
+    const current = now();
+    prune(current);
+    return timestamps.length >= limit;
+  }
+
   return {
+    wouldBlock,
     async acquire(): Promise<void> {
       while (true) {
         const current = now();
