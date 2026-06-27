@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { createRepository, type Repository } from '../src/db/index.js';
 import { buildSummary, buildTrends, buildMapData, buildActiveListings, buildNewListings } from '../src/web/data.js';
-import { renderOverview, renderTrends, renderMap, renderListings, renderNewListings } from '../src/web/views.js';
+import { renderOverview, renderTrends, renderMap, renderListings, renderNewListings, renderWillhabenRequests } from '../src/web/views.js';
 import { parseDistrictQuery } from '../src/web/server.js';
 import { resetWillhabenAccessStatus, recordWillhabenForbidden, recordVerificationDeferred } from '../src/lib/willhabenStatus.js';
-import { recordWillhabenRequest, resetWillhabenRequestTracking } from '../src/lib/rateLimit.js';
+import { recordWillhabenRequest, resetWillhabenRequestTracking, getWillhabenRequestsLast60s } from '../src/lib/rateLimit.js';
 import type { AppConfig, NormalizedListing } from '../src/types.js';
 
 function repoAt(now: string): Repository {
@@ -195,6 +195,35 @@ describe('parseDistrictQuery', () => {
   });
 });
 
+describe('renderWillhabenRequests', () => {
+  beforeEach(() => resetWillhabenRequestTracking());
+
+  it('lists recent requests with url, status, and result', () => {
+    const now = Date.parse('2026-06-06T12:00:00.000Z');
+    recordWillhabenRequest({
+      at: now - 5_000,
+      url: 'https://www.willhaben.at/a',
+      status: 200,
+      ok: true,
+    });
+    recordWillhabenRequest({
+      at: now - 2_000,
+      url: 'https://www.willhaben.at/b',
+      status: 403,
+      ok: false,
+    });
+
+    const html = renderWillhabenRequests(getWillhabenRequestsLast60s(now), 25);
+    expect(html).toContain('Willhaben requests (last 60s)');
+    expect(html).toContain('id="willhaben-requests"');
+    expect(html).toContain('https://www.willhaben.at/a');
+    expect(html).toContain('https://www.willhaben.at/b');
+    expect(html).toContain('403');
+    expect(html).toContain('Failed');
+    expect(html).toContain('OK');
+  });
+});
+
 describe('views render valid html', () => {
   beforeEach(() => resetWillhabenAccessStatus());
 
@@ -211,6 +240,7 @@ describe('views render valid html', () => {
     expect(overview).toContain('href="/listings"');
     expect(overview).toContain('href="/new-listings"');
     expect(overview).toContain('requests last 60s');
+    expect(overview).toContain('href="/willhaben-requests"');
     expect(overview).toContain('max requests / min');
     expect(overview).toContain('pending verification');
     // District stats table is sortable by clicking column headers.

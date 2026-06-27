@@ -12,10 +12,12 @@ import {
   renderMap,
   renderListings,
   renderNewListings,
+  renderWillhabenRequests,
 } from './views.js';
 import type { Repository } from '../db/index.js';
 import type { AppConfig } from '../types.js';
 import { getUiAlerts } from '../lib/willhabenStatus.js';
+import { getWillhabenRequestsLast60s } from '../lib/rateLimit.js';
 
 export function parseDistrictQuery(raw: unknown): number | null {
   if (raw === undefined || raw === null || String(raw).trim() === '') return null;
@@ -40,6 +42,16 @@ export function createServer(repo: Repository, config: AppConfig): Express {
   app.get('/new-listings', (req, res) => {
     const district = parseDistrictQuery(req.query.district);
     res.send(renderNewListings(buildNewListings(repo), district, alerts()));
+  });
+
+  app.get('/willhaben-requests', (_req, res) => {
+    res.send(
+      renderWillhabenRequests(
+        getWillhabenRequestsLast60s(),
+        config.willhabenRequestsPerMinute ?? 25,
+        alerts(),
+      ),
+    );
   });
 
   app.get('/trends', (_req, res) => {

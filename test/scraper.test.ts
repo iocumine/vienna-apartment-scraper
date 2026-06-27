@@ -20,7 +20,7 @@ import {
   recordWillhabenForbidden,
   resetWillhabenAccessStatus,
 } from '../src/lib/willhabenStatus.js';
-import { resetWillhabenRequestTracking } from '../src/lib/rateLimit.js';
+import { getWillhabenRequestsLast60s, resetWillhabenRequestTracking } from '../src/lib/rateLimit.js';
 import type { AppConfig } from '../src/types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -231,6 +231,16 @@ describe('fetchPage', () => {
     const acquire = vi.fn(async () => {});
     await fetchPage('http://x', { fetchImpl, rateLimiter: { acquire } });
     expect(acquire).toHaveBeenCalledTimes(1);
+  });
+
+  it('records the request url and status in the rolling log', async () => {
+    const html = `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(fixture)}</script>`;
+    const url = 'https://www.willhaben.at/search?page=2';
+    const fetchImpl = async () => ({ ok: true, status: 200, text: async () => html });
+    await fetchPage(url, { fetchImpl });
+    expect(getWillhabenRequestsLast60s()).toEqual([
+      { at: expect.any(Number), url, status: 200, ok: true },
+    ]);
   });
 });
 

@@ -4,30 +4,65 @@ export interface RateLimiter {
   wouldBlock(): boolean;
 }
 
-const REQUEST_WINDOW_MS = 60_000;
-const globalRequestTimestamps: number[] = [];
-
-function pruneRequestTimestamps(current: number): void {
-  while (
-    globalRequestTimestamps.length > 0 &&
-    globalRequestTimestamps[0]! <= current - REQUEST_WINDOW_MS
-  ) {
-    globalRequestTimestamps.shift();
-  }
+export interface WillhabenRequestLogEntry {
+  at: number;
+  url: string;
+  status: number | null;
+  ok: boolean;
 }
 
-export function recordWillhabenRequest(at: number = Date.now()): void {
-  globalRequestTimestamps.push(at);
-  pruneRequestTimestamps(at);
+const REQUEST_WINDOW_MS = 60_000;
+const globalRequestLog: WillhabenRequestLogEntry[] = [];
+
+function pruneRequestLog(current: number): void {
+  const cutoff = current - REQUEST_WINDOW_MS;
+  let write = 0;
+  for (let read = 0; read < globalRequestLog.length; read += 1) {
+    const entry = globalRequestLog[read]!;
+    if (entry.at > cutoff) {
+      globalRequestLog[write] = entry;
+      write += 1;
+    }
+  }
+  globalRequestLog.length = write;
+}
+
+function normalizeRequestEntry(
+  atOrEntry: number | Partial<WillhabenRequestLogEntry>,
+  legacyUrl?: string,
+): WillhabenRequestLogEntry {
+  if (typeof atOrEntry === 'number') {
+    return { at: atOrEntry, url: legacyUrl ?? '', status: null, ok: false };
+  }
+  return {
+    at: atOrEntry.at ?? Date.now(),
+    url: atOrEntry.url ?? '',
+    status: atOrEntry.status ?? null,
+    ok: atOrEntry.ok ?? false,
+  };
+}
+
+export function recordWillhabenRequest(
+  atOrEntry: number | Partial<WillhabenRequestLogEntry> = Date.now(),
+  legacyUrl?: string,
+): void {
+  const entry = normalizeRequestEntry(atOrEntry, legacyUrl);
+  globalRequestLog.push(entry);
+  pruneRequestLog(entry.at);
 }
 
 export function countWillhabenRequestsLast60s(now: number = Date.now()): number {
-  pruneRequestTimestamps(now);
-  return globalRequestTimestamps.length;
+  pruneRequestLog(now);
+  return globalRequestLog.length;
+}
+
+export function getWillhabenRequestsLast60s(now: number = Date.now()): WillhabenRequestLogEntry[] {
+  pruneRequestLog(now);
+  return [...globalRequestLog].reverse();
 }
 
 export function resetWillhabenRequestTracking(): void {
-  globalRequestTimestamps.length = 0;
+  globalRequestLog.length = 0;
 }
 
 export interface RateLimiterDeps {

@@ -252,25 +252,33 @@ export async function fetchPage(
   }: { fetchImpl?: FetchLike; rateLimiter?: RateLimiter } = {},
 ): Promise<NormalizedListing[]> {
   await rateLimiter?.acquire();
-  recordWillhabenRequest();
-  const res = await fetchImpl(url, {
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-      Accept: 'text/html,application/xhtml+xml,application/json',
-      'Accept-Language': 'de-AT,de;q=0.9,en;q=0.8',
-    },
-  });
-  if (!res.ok) {
-    const message = `willhaben request failed: ${res.status} ${res.statusText ?? ''}`.trim();
-    if (res.status === 403) recordWillhabenForbidden(message);
-    throw new Error(message);
+  const at = Date.now();
+  let recorded = false;
+  try {
+    const res = await fetchImpl(url, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/json',
+        'Accept-Language': 'de-AT,de;q=0.9,en;q=0.8',
+      },
+    });
+    recordWillhabenRequest({ at, url, status: res.status, ok: res.ok });
+    recorded = true;
+    if (!res.ok) {
+      const message = `willhaben request failed: ${res.status} ${res.statusText ?? ''}`.trim();
+      if (res.status === 403) recordWillhabenForbidden(message);
+      throw new Error(message);
+    }
+    recordWillhabenSuccess();
+    const body = await res.text();
+    const data = extractNextData(body) ?? safeJson(body);
+    const adverts = extractAdvertSummaries(data);
+    return adverts.map(normalizeAdvert).filter((l): l is NormalizedListing => l !== null);
+  } catch (err) {
+    if (!recorded) recordWillhabenRequest({ at, url, status: null, ok: false });
+    throw err;
   }
-  recordWillhabenSuccess();
-  const body = await res.text();
-  const data = extractNextData(body) ?? safeJson(body);
-  const adverts = extractAdvertSummaries(data);
-  return adverts.map(normalizeAdvert).filter((l): l is NormalizedListing => l !== null);
 }
 
 function safeJson(body: string): unknown {

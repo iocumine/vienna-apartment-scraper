@@ -226,7 +226,7 @@ export function renderOverview(summary: Summary): string {
       <a class="card card-link" href="/listings" title="View all active listings"><div class="n">${summary.activeCount}</div>active listings</a>
       <a class="card card-link" href="/new-listings" title="View new listings (last 24h)"><div class="n">${summary.newCount}</div>new in last 24h</a>
       <div class="card"><div class="n">${summary.districts.length}</div>districts tracked</div>
-      <div class="card" title="Willhaben HTTP requests in the rolling last 60 seconds"><div class="n">${summary.willhabenRequestsLast60s}</div>requests last 60s</div>
+      <a class="card card-link" href="/willhaben-requests" title="View Willhaben HTTP requests in the rolling last 60 seconds"><div class="n">${summary.willhabenRequestsLast60s}</div>requests last 60s</a>
       <div class="card" title="Configured willhaben request cap per rolling 60-second window"><div class="n">${summary.willhabenRequestsPerMinute}</div>max requests / min</div>
       <a class="card card-link" href="/listings" title="Active listings not seen in recent polls"><div class="n">${summary.pendingVerificationCount}</div>pending verification</a>
     </div>
@@ -255,6 +255,40 @@ export function renderOverview(summary: Summary): string {
       })();
     </script>`;
   return layout('Vienna Apartments - Overview', NAV, body, summary.uiAlerts);
+}
+
+export function renderWillhabenRequests(
+  requests: Array<{ at: number; url: string; status: number | null; ok: boolean }>,
+  maxPerMinute: number,
+  uiAlerts?: UiAlerts,
+): string {
+  const rows = requests
+    .map((r) => {
+      const atIso = new Date(r.at).toISOString();
+      const statusLabel = r.status != null ? String(r.status) : '—';
+      const result = r.ok ? 'OK' : 'Failed';
+      return `<tr>
+      <td data-sort-value="${escapeHtml(atIso)}">${escapeHtml(atIso)}</td>
+      <td><a href="${escapeHtml(r.url)}" target="_blank" rel="noopener">${escapeHtml(r.url)}</a></td>
+      <td data-sort-value="${r.status ?? ''}">${escapeHtml(statusLabel)}</td>
+      <td data-sort-value="${r.ok ? 1 : 0}">${escapeHtml(result)}</td>
+    </tr>`;
+    })
+    .join('');
+  const body = `
+    <h1>Willhaben requests (last 60s)</h1>
+    <p>Showing ${requests.length} request${requests.length === 1 ? '' : 's'} in the rolling last 60 seconds (limit: ${maxPerMinute}/min).</p>
+    <table id="willhaben-requests" class="sortable">
+      <thead><tr>
+        <th data-type="text">Time<span class="arrow"></span></th>
+        <th data-type="text">URL<span class="arrow"></span></th>
+        <th data-type="num">Status<span class="arrow"></span></th>
+        <th data-type="text">Result<span class="arrow"></span></th>
+      </tr></thead>
+      <tbody>${rows || '<tr><td colspan="4">No requests in the last 60 seconds</td></tr>'}</tbody>
+    </table>
+    ${sortableScript()}`;
+  return layout('Vienna Apartments - Willhaben requests', NAV, body, uiAlerts);
 }
 
 interface ListingsPageOptions {

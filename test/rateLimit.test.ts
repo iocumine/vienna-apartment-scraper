@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createRateLimiter, countWillhabenRequestsLast60s, recordWillhabenRequest, resetWillhabenRequestTracking } from '../src/lib/rateLimit.js';
+import { createRateLimiter, countWillhabenRequestsLast60s, getWillhabenRequestsLast60s, recordWillhabenRequest, resetWillhabenRequestTracking } from '../src/lib/rateLimit.js';
 
 describe('createRateLimiter', () => {
   it('allows up to maxPerMinute requests without waiting', async () => {
@@ -65,5 +65,16 @@ describe('willhaben request tracking', () => {
     recordWillhabenRequest(now - 30_000);
     recordWillhabenRequest(now - 10_000);
     expect(countWillhabenRequestsLast60s(now)).toBe(2);
+  });
+
+  it('returns recent request details newest first', () => {
+    const now = 1_000_000;
+    recordWillhabenRequest({ at: now - 30_000, url: 'https://www.willhaben.at/a', status: 200, ok: true });
+    recordWillhabenRequest({ at: now - 10_000, url: 'https://www.willhaben.at/b', status: 403, ok: false });
+    recordWillhabenRequest(now - 61_000, 'https://www.willhaben.at/old');
+    expect(getWillhabenRequestsLast60s(now)).toEqual([
+      { at: now - 10_000, url: 'https://www.willhaben.at/b', status: 403, ok: false },
+      { at: now - 30_000, url: 'https://www.willhaben.at/a', status: 200, ok: true },
+    ]);
   });
 });
